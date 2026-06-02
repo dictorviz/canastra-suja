@@ -1,0 +1,161 @@
+"""
+B_GLITCH - CAMADA B, Fase 2: A COLISAO (corrupcao PARALELA)
+
+A carta fisica (B) corrompe a profecia (A). Cada carta puxada soma ao NIVEL
+GLOBAL de corrupcao e dispara um glitch cujo SABOR vem do NAIPE -- os quatro
+elementos da cartomancia:
+
+    Copas   (agua)       -> DESAFINA            a altura escorrega/afunda
+    Ouros   (terra)      -> CONGELA             um grao trava/repete, petrifica
+    Espadas (lamina/ar)  -> FRAGMENTA A VOZ     corta as palavras do Perec
+    Paus    (fogo)       -> SATURA              queima/distorce
+
+E corrupcao PARALELA: NAO toca no sinal da camada A (bus 0 intocado). Sao
+vozes aditivas em b_synth.scd (SynthDefs glitch*) que SOAM como a maquina se
+desfazendo. Sem b_synth.scd carregado, A soa pristina.
+
+  - o NAIPE escolhe o SABOR da corrupcao;
+  - o VALOR da carta (A..K) escolhe a FORCA do golpe daquela carta (o "kick");
+  - o ACUMULO (quantas cartas ja cairam) escolhe a PROFUNDIDADE -- a maquina
+    gagueja de leve no comeco e quase desmorona no fim (a profecia desmentida
+    devagar).
+
+USO RAPIDO (com SC + a_synth.scd E b_synth.scd rodando):
+    python b_glitch.py        # simula cartas e ouve a corrupcao crescer
+"""
+
+import glob
+import os
+import random
+import time
+from typing import Optional
+
+from pythonosc import udp_client
+
+from b_samples import RANKS, SUIT_NAMES
+
+# =============================================================================
+# CONFIG
+# =============================================================================
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 57120  # mesma porta do SC; namespace /mundo/* separado
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TTS_CACHE_DIR = os.path.join(HERE, "tts_cache")
+
+# Naipe -> glitch (os 4 elementos). Cada naipe e UM dos quatro.
+SUIT_GLITCH = {
+    "C": "detune",    # Copas   / agua  -> desafina
+    "O": "freeze",    # Ouros   / terra -> congela
+    "E": "shards",    # Espadas / ar    -> fragmenta a voz
+    "P": "saturate",  # Paus    / fogo  -> satura
+}
+SUIT_ELEMENT = {"C": "agua", "O": "terra", "E": "ar", "P": "fogo"}
+GLITCH_LABEL = {
+    "detune": "desafina", "freeze": "congela",
+    "shards": "fragmenta a voz", "saturate": "satura",
+}
+
+DEFAULT_STEP = 0.025   # quanto cada carta soma ao nivel global (1.0 em ~40 cartas)
+DEFAULT_WORDS = 16     # quantas palavras do Perec a espada tem pra cortar
+
+
+# =============================================================================
+# O MOTOR DA CORRUPCAO
+# =============================================================================
+
+class GlitchEngine:
+    """Acumula a corrupcao e manda /mundo/glitch pro b_synth.scd a cada carta."""
+
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
+                 verbose: bool = True, step: float = DEFAULT_STEP,
+                 max_words: int = DEFAULT_WORDS):
+        self.client = udp_client.SimpleUDPClient(host, port)
+        self.verbose = verbose
+        self.step = step
+        self.max_words = max_words
+        self.level = 0.0  # nivel global de corrupcao, 0.0 -> 1.0
+        if verbose:
+            print(f"[GLITCH] corrupcao paralela -> {host}:{port} (/mundo/glitch)")
+
+    def load_voice(self) -> int:
+        """Manda algumas palavras do Perec (tts_cache) pro SC -- a espada
+        (Espadas) corta ESTAS palavras em cacos. Reusa o cache da camada A
+        sem editar nada dela. Se o cache estiver vazio, os shards ficam mudos
+        ate a voz ser renderizada (qualquer run da opcao 1/5/7 enche o cache)."""
+        wavs = sorted(glob.glob(os.path.join(TTS_CACHE_DIR, "*.wav")))
+        if not wavs:
+            if self.verbose:
+                print("[GLITCH] tts_cache vazio -> shards (Espadas) mudos "
+                      "ate a voz do Perec ser renderizada uma vez.")
+            return 0
+        random.shuffle(wavs)
+        chosen = wavs[:self.max_words]
+        for path in chosen:
+            key = os.path.splitext(os.path.basename(path))[0]
+            self.client.send_message("/mundo/voz_load", [str(key), str(path)])
+        if self.verbose:
+            print(f"[GLITCH] {len(chosen)} palavras do Perec carregadas "
+                  f"(a espada corta estas).")
+        time.sleep(0.4)  # Buffer.read async no SC
+        return len(chosen)
+
+    def _kick_for_rank(self, rank: str) -> float:
+        """Valor da carta -> forca do golpe. A=leve (0.3) ... K=pesado (1.0)."""
+        try:
+            idx = RANKS.index(rank)
+        except ValueError:
+            idx = len(RANKS) // 2
+        return 0.3 + (idx / (len(RANKS) - 1)) * 0.7
+
+    def corrupt(self, rank: str, suit: str, kick: Optional[float] = None):
+        """A carta corrompe: sobe o nivel global e dispara o glitch do naipe."""
+        suit = suit.upper()
+        tipo = SUIT_GLITCH.get(suit)
+        if tipo is None:
+            return
+        if kick is None:
+            kick = self._kick_for_rank(rank)
+        self.level = min(1.0, self.level + self.step)
+        self.client.send_message(
+            "/mundo/glitch", [tipo, float(self.level), float(kick)])
+        if self.verbose:
+            pct = int(round(self.level * 100))
+            print(f"[GLITCH] {rank}{suit} ({SUIT_ELEMENT.get(suit, '?')}) "
+                  f"-> {GLITCH_LABEL.get(tipo, tipo)}  |  corrupcao {pct}%")
+
+    def reset(self):
+        """Zera a corrupcao -- nova consulta / nova performance."""
+        self.level = 0.0
+        self.client.send_message("/mundo/glitch_reset", [])
+        if self.verbose:
+            print("[GLITCH] corrupcao zerada (nova consulta).")
+
+
+# =============================================================================
+# DEMO
+# =============================================================================
+
+def main():
+    print("=" * 60)
+    print("B_GLITCH - a colisao (corrupcao paralela) - DEMO")
+    print("=" * 60)
+    print("Pre-requisito: SC com a_synth.scd E b_synth.scd rodando.")
+    print()
+    glitch = GlitchEngine(verbose=True)
+    glitch.load_voice()
+    print()
+    print("[DEMO] 12 cartas -- a corrupcao sobe e a maquina vai gaguejando...")
+    suits = list(SUIT_NAMES.keys())
+    for _ in range(12):
+        rank = random.choice(RANKS)
+        suit = random.choice(suits)
+        glitch.corrupt(rank, suit)
+        time.sleep(2.5)
+    print()
+    print("[DEMO] fim. (a corrupcao mora no Python; reinicie pra zerar)")
+
+
+if __name__ == "__main__":
+    main()

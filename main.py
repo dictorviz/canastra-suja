@@ -488,6 +488,7 @@ def opt_cartomante_completa(state: CompositionState):
     from a_osc import play_composition_osc, DEFAULT_HOST, DEFAULT_PORT
     from a_visual_web import start_http_server, start_osc_listener, WORD_SYNC_PORT
     from b_samples import MundoPlayer
+    from b_glitch import GlitchEngine
     from b_teclado import print_help, parse_card, random_card
 
     host = DEFAULT_HOST
@@ -532,6 +533,10 @@ def opt_cartomante_completa(state: CompositionState):
             osc_listener.shutdown()
         return
 
+    # Fase 2 - a colisao: cada carta corrompe a profecia (corrupcao paralela).
+    glitch = GlitchEngine(host=host, port=port, verbose=True)
+    glitch.load_voice()  # palavras do Perec pros shards (Espadas)
+
     print("\n[OK] Tudo pronto. Iniciando synth...\n")
     print_help()
 
@@ -565,6 +570,7 @@ def opt_cartomante_completa(state: CompositionState):
             rank, suit = parsed
 
         player.play_card(rank, suit)
+        glitch.corrupt(rank, suit)  # a carta corrompe a profecia (camada A)
 
     player.stop()
     print("A cartomante recolhe o baralho.")

@@ -22,6 +22,7 @@ COMO DIGITAR UMA CARTA:
 import random
 
 from b_samples import MundoPlayer, RANKS, SUIT_NAMES
+from b_glitch import GlitchEngine
 
 
 def parse_card(text: str):
@@ -58,6 +59,8 @@ def main():
 
     player = MundoPlayer(verbose=True)
     player.preload()
+    glitch = GlitchEngine(verbose=True)   # Fase 2: a carta corrompe a profecia
+    glitch.load_voice()
     print("\n[OK] baralho do mundo montado. Puxe uma carta.\n")
 
     while True:
@@ -88,6 +91,7 @@ def main():
             rank, suit = parsed
 
         player.play_card(rank, suit)
+        glitch.corrupt(rank, suit)
 
     player.stop()
     print("A cartomante recolhe o baralho. Tchau.")
