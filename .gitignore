@@ -1,0 +1,24 @@
+# =====================================================================
+# A CARTOMANTE - .gitignore
+#
+# git aqui protege o CODIGO (camada A intocavel + camada B). O AUDIO fica
+# de fora -- pesado demais (~384MB) e precisa de backup proprio (ver abaixo).
+# =====================================================================
+
+# --- Audio (NAO versionado: pesado e/ou reproduzivel) ---
+# biblioteca/ = MP3 fonte (MASTER irreproduzivel -> faca backup separado!)
+# samples/    = WAV derivados de biblioteca/ (reproduziveis pela conversao)
+biblioteca/
+samples/
+
+# --- Derivados / cache (regenerados pelo sistema) ---
+tts_cache/
+sessoes/
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Local / ferramentas ---
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
