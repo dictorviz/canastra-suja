@@ -1,82 +1,42 @@
 """
-PLAYER OSC - SISTEMA BARALHO MUSICAL
+A_OSC - CANASTRA SUJA: a CAMA generativa (baralho virtual -> SuperCollider)
 
-Envia a composicao em tempo real via OSC para o SuperCollider (ou qualquer
-receptor OSC). Diferente de MIDI, o OSC manda dados ricos: cents como float
-exato (sem pitch bend), articulacao como string, dinamica como string, etc.
+Toca a composicao gerada (nucleo_compositor: 52 cartas -> 7 parametros ->
+notas) via OSC pro a_synth.scd. E a CAMA que fica rodando ao fundo da peca,
+enquanto as cartas da vida real (camada B / b_synth) sujam por cima.
 
-CONFIGURACAO PADRAO:
-    host: 127.0.0.1  (localhost)
-    port: 57120      (porta padrao do SuperCollider language - sclang)
+>>> SEM VOZ. Em Canastra Suja a voz/palavras do Perec saiu: este driver NAO
+>>> dispara nenhuma mensagem /baralho/fala_* -- so as notas instrumentais
+>>> (/baralho/note, /rest, /start, /end). O synth de voz do a_synth.scd
+>>> (\\baralhoVox) fica dormente (~voxFragments segue vazio, pre-inicializado).
+
+CONFIG PADRAO:
+    host: 127.0.0.1   port: 57120 (sclang)
 
 MENSAGENS OSC ENVIADAS:
     /baralho/start  []
-        - inicio da composicao (limpa estado no lado SC)
-
-    /baralho/note   [pitch_midi:int, velocity:int, cents:int, dur_total:float,
-                     dur_sustain:float, articulacao:str, bpm:int,
-                     fermata:int, tie_in:int, tie_out:int]
-        - pitch_midi: 0..127 (numero MIDI)
-        - velocity:   0..127 (intensidade)
-        - cents:      desvio em cents (-200..+200)
-        - dur_total:  duracao total da nota em segundos
-        - dur_sustain: porcao em que a nota fica ativa (resto e silencio)
-        - articulacao: string ('NORMAL', 'STACATTO', 'ACENTO', ...)
-        - bpm:        bpm atual
-        - fermata, tie_in, tie_out: 0 ou 1
-
-    /baralho/rest   [dur:float, fermata:int, tie_in:int, tie_out:int]
-
+    /baralho/note   [pitch_midi, velocity, cents, dur_total, dur_sustain,
+                     articulacao, bpm, fermata, tie_in, tie_out]
+    /baralho/rest   [dur, fermata, tie_in, tie_out]
     /baralho/end    []
-        - fim da composicao
 
 USO COMO BIBLIOTECA:
     from nucleo_compositor import Compositor
     from a_osc import play_composition_osc
-
-    comp = Compositor()
-    comp.compose(seed=42, verbose=False, target_seconds=120)
-    play_composition_osc(comp.notes, host="127.0.0.1", port=57120)
+    comp = Compositor(); comp.compose(seed=42, target_seconds=120)
+    play_composition_osc(comp.notes)
 """
 
 import time
-import unicodedata
 from typing import Callable, List, Optional
 
 from pythonosc import udp_client
 
-import nucleo_perec
-import a_voz
 from nucleo_compositor import (
     DEFAULT_BPM,
     Note,
     note_duration_seconds,
 )
-
-
-# =============================================================================
-# NORMALIZACAO DE TEXTO PRA VOZ (SuperCollider so come ASCII)
-# =============================================================================
-
-def normalize_for_vox(text: str) -> str:
-    """
-    Tira acentos (NFD + drop combining marks), reduz a ASCII lowercase.
-    SC trata strings como bytes ASCII; mandar UTF-8 multi-byte estoura a
-    tabela de fonemas. Tudo que nao for letra/espaco vira espaco (= pausa).
-    """
-    if not text:
-        return ""
-    # NFD decompoe "á" em "a" + "U+0301", depois removemos os combining marks
-    nfd = unicodedata.normalize("NFD", text)
-    stripped = "".join(c for c in nfd if not unicodedata.combining(c))
-    out = []
-    for c in stripped.lower():
-        if c.isalpha() and ord(c) < 128:
-            out.append(c)
-        elif c.isspace() or c in ".,;:!?-—":
-            out.append(" ")
-        # outros caracteres sao dropados
-    return "".join(out)
 
 
 # =============================================================================
@@ -116,7 +76,7 @@ def note_pitch_to_midi(note_name: str, oitava_str: str) -> int:
 
 
 # =============================================================================
-# PLAYER OSC
+# PLAYER OSC (instrumental, sem voz)
 # =============================================================================
 
 class OscPlayer:
@@ -127,7 +87,6 @@ class OscPlayer:
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         verbose: bool = True,
-        preload_tts: bool = True,
     ):
         self.host = host
         self.port = port
@@ -136,25 +95,6 @@ class OscPlayer:
         self.current_bpm = DEFAULT_BPM
         if verbose:
             print(f"[OSC] Enviando para {host}:{port}")
-        if preload_tts:
-            self.preload_tts_buffers()
-
-    def preload_tts_buffers(self):
-        """
-        Renderiza todas palavras unicas via SAPI (cache em tts_cache/*.wav)
-        e envia (chave, path_abs) pra SC carregar em Buffers.
-        Idempotente: WAVs ja em cache nao sao re-renderizadas.
-        """
-        if self.verbose:
-            print("[TTS] pre-render + envio de paths pra SC...")
-        idx = a_voz.precompute_all_chapters(verbose=self.verbose)
-        for key, path in idx.items():
-            self.client.send_message("/baralho/fala_load", [str(key), str(path)])
-        if self.verbose:
-            print(f"[TTS] {len(idx)} buffers enviados pra SC carregar.")
-        # SC carrega async; da uma pausa pequena pra Buffer.read completar
-        # antes da primeira nota tocar.
-        time.sleep(0.5)
 
     def send_start(self):
         self.client.send_message("/baralho/start", [])
@@ -213,30 +153,6 @@ class OscPlayer:
         sustain_ratio = 1.0 if is_slurred else ARTICULATION_SUSTAIN.get(articulacao, 0.9)
         sustain_seconds = total * sustain_ratio
 
-        # ---------------------------------------------------------------
-        # VOZ (Perec) - 6 fragmentos sussurrados sincronizados com os ecos
-        # do SC. STACATTO nao recebe fala (seco/sem ecos longos), mas
-        # SEMPRE enviamos /baralho/fala_setup pra "limpar" os fragments
-        # da nota anterior no SC.
-        # ---------------------------------------------------------------
-        fragments_raw: List[str] = ["", "", "", "", "", ""]
-        spoken_fragments: List[str] = []
-        main_card_dict = None
-        if note.cards_used:
-            main_card_dict = {
-                "type": note.cards_used[0].type,
-                "suit": note.cards_used[0].suit.value,
-            }
-        if main_card_dict is not None and "STACATTO" not in articulacao:
-            for i in range(6):
-                frag = nucleo_perec.fragmento_para_eco(main_card_dict, eco_idx=i)
-                norm = normalize_for_vox(frag)
-                fragments_raw[i] = norm
-                if norm.strip():
-                    spoken_fragments.append(norm)
-        # Sempre envia (mesmo todos vazios) - serve de reset no SC
-        self.client.send_message("/baralho/fala_setup", fragments_raw)
-
         self.client.send_message(
             "/baralho/note",
             [
@@ -253,22 +169,6 @@ class OscPlayer:
             ],
         )
 
-        # ---------------------------------------------------------------
-        # RECITATIVO durante FERMATA - frase longa declamada
-        # Vai pelo hall (cauda longa). Disparado em paralelo com o tom.
-        # ---------------------------------------------------------------
-        recitativo_text = ""
-        if note.has_fermata and main_card_dict is not None:
-            raw = nucleo_perec.frase_para_recitativo(main_card_dict)
-            recitativo_text = normalize_for_vox(raw)
-            if recitativo_text.strip():
-                # Pequena pan aleatorio sutil pra o recitativo respirar
-                rec_pan = ((hash(recitativo_text) % 21) - 10) * 0.02
-                self.client.send_message(
-                    "/baralho/fala_recitativo",
-                    [str(recitativo_text), float(total), float(rec_pan)],
-                )
-
         if on_event:
             on_event({
                 'type': 'note', 'pitch': midi_pitch, 'velocity': velocity,
@@ -283,8 +183,6 @@ class OscPlayer:
                     {'type': c.type, 'suit': c.suit.value}
                     for c in (note.cards_used or [])
                 ],
-                'spoken_fragments': spoken_fragments,
-                'recitativo': recitativo_text,
             })
         elif self.verbose:
             cents_str = f" {alt_cents:+d}c" if alt_cents else ""
@@ -306,12 +204,13 @@ def play_composition_osc(
     max_seconds: Optional[float] = None,
     on_event: Optional[Callable] = None,
     verbose: bool = True,
-    preload_tts: bool = True,
+    stop_event=None,
 ) -> float:
     """
-    Toca a composicao via OSC. Se max_seconds for dado, faz cap; senao toca tudo.
+    Toca a composicao via OSC. Para antes do fim se max_seconds for atingido
+    ou se stop_event (threading.Event) for setado -- usado pela cama em loop.
     """
-    player = OscPlayer(host=host, port=port, verbose=verbose, preload_tts=preload_tts)
+    player = OscPlayer(host=host, port=port, verbose=verbose)
     elapsed = 0.0
     notes_played = 0
 
@@ -322,6 +221,8 @@ def play_composition_osc(
             print("-" * 60)
         player.send_start()
         for note in notes:
+            if stop_event is not None and stop_event.is_set():
+                break
             if max_seconds is not None and elapsed >= max_seconds:
                 if verbose:
                     print(f"[INFO] Limite {max_seconds:.0f}s atingido. "
@@ -346,12 +247,10 @@ def main():
     import sys
     from nucleo_compositor import Compositor
 
-    print("=" * 80)
-    print("OSC PLAYER - SISTEMA BARALHO MUSICAL")
-    print("=" * 80)
-    print()
-    print(f"[INFO] Enviando para {DEFAULT_HOST}:{DEFAULT_PORT}")
-    print("       (porta padrao do SuperCollider/sclang)")
+    print("=" * 70)
+    print("A_OSC - o BARALHO VIRTUAL generativo (sem voz) - DEMO")
+    print("=" * 70)
+    print(f"[INFO] Enviando para {DEFAULT_HOST}:{DEFAULT_PORT} (sclang)")
     print()
 
     target_seconds = 60.0

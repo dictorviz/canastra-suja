@@ -1,8 +1,11 @@
 # =====================================================================
-# A CARTOMANTE - .gitignore
+# CANASTRA SUJA - .gitignore
 #
-# git aqui protege o CODIGO (camada A intocavel + camada B). O AUDIO fica
-# de fora -- pesado demais (~384MB) e precisa de backup proprio (ver abaixo).
+# git aqui protege o CODIGO (camada A = a cama tocada pelas cartas / a_*;
+# camada B = o mundo / b_*; e o que foi arquivado em arquivo/). O AUDIO
+# fica de fora -- pesado demais (~384MB) e precisa de backup proprio (ver
+# abaixo). Padroes sem barra (tts_cache/, sessoes/) valem em qualquer
+# pasta, inclusive dentro de arquivo/.
 # =====================================================================
 
 # --- Audio (NAO versionado: pesado e/ou reproduzivel) ---
@@ -11,14 +14,26 @@
 biblioteca/
 samples/
 
-# --- Derivados / cache (regenerados pelo sistema) ---
+# --- Derivados / cache / saidas geradas (regenerados pelo sistema) ---
+# (comentarios precisam ficar em linha propria: o git nao aceita # no fim do padrao)
+# tts_cache/      = WAVs de voz pre-renderizados (camada A arquivada)
 tts_cache/
+# sessoes/        = estados/gravacoes de sessoes antigas
 sessoes/
+# marcadores/     = PNGs dos marcadores ArUco (gere com: python b_aruco.py gerar)
+marcadores/
+# composicao*.txt = partituras-texto exportadas (nucleo_compositor)
+composicao*.txt
 __pycache__/
 *.pyc
 *.pyo
 
-# --- Local / ferramentas ---
+# --- Ambientes virtuais Python ---
+.venv/
+venv/
+env/
+
+# --- Local / ferramentas / SO ---
 .claude/settings.local.json
 .DS_Store
 Thumbs.db

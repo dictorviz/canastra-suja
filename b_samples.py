@@ -1,16 +1,15 @@
 """
-B_SAMPLES - CAMADA B (o mundo / a cartomante ao vivo)
+B_SAMPLES - CANASTRA SUJA (o baralho do mundo)
 
 O "baralho do mundo": a pasta samples/ tem uma biblioteca de HABITATS
-sonoros longos (paisagens convertidas de biblioteca/*.mp3). Eles formam um
-SEGUNDO BARALHO, embaralhado. Cada carta FISICA puxada pela cartomante faz
-o mundo ATRAVESSAR -- crossfade do habitat atual pro proximo habitat
-sorteado. Um lugar de cada vez. E o contraponto concreto (mundo gravado)
-contra a voz sintetica do Perec (camada A).
+sonoros longos (paisagens convertidas de biblioteca/*.mp3). Eles formam o
+BARALHO, embaralhado. Cada carta do Buraco puxada (teclado hoje, webcam/ArUco
+amanha) faz o mundo ATRAVESSAR -- crossfade do habitat atual pro proximo
+habitat sorteado. Um lugar de cada vez.
 
-A carta fisica nao carrega o som (os dois baralhos sao destinos
-independentes). Ela define a ESPACIALIZACAO pelo naipe -- e, na Fase 2,
-o GLITCH pelo valor. O som vem do baralho do mundo.
+A carta nao carrega o som diretamente: ela sorteia o proximo habitat, define
+a ESPACIALIZACAO pelo naipe e rege a DEGRADACAO (ver b_glitch). O som vem do
+baralho do mundo.
 
 FLUXO:
     1. a_synth.scd E b_synth.scd rodando no SC.

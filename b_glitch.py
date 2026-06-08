@@ -1,18 +1,22 @@
 """
-B_GLITCH - CAMADA B, Fase 2: A COLISAO (corrupcao PARALELA)
+B_GLITCH - CANASTRA SUJA: a DEGRADACAO (a carta suja o som)
 
-A carta fisica (B) corrompe a profecia (A). Cada carta puxada soma ao NIVEL
-GLOBAL de corrupcao e dispara um glitch cujo SABOR vem do NAIPE -- os quatro
-elementos da cartomancia:
+Cada carta puxada soma ao NIVEL GLOBAL de degradacao e dispara um glitch
+cujo SABOR vem do NAIPE -- cada naipe e uma OPERACAO sobre o som:
 
-    Copas   (agua)       -> DESAFINA            a altura escorrega/afunda
-    Ouros   (terra)      -> CONGELA             um grao trava/repete, petrifica
-    Espadas (lamina/ar)  -> FRAGMENTA A VOZ     corta as palavras do Perec
-    Paus    (fogo)       -> SATURA              queima/distorce
+    Copas    -> DESAFINA     a altura escorrega/afunda
+    Ouros    -> CONGELA      um grao trava/repete
+    Espadas  -> FRAGMENTA    [PLACEHOLDER - ver TODO abaixo]
+    Paus     -> SATURA       queima/distorce
 
-E corrupcao PARALELA: NAO toca no sinal da camada A (bus 0 intocado). Sao
-vozes aditivas em b_synth.scd (SynthDefs glitch*) que SOAM como a maquina se
-desfazendo. Sem b_synth.scd carregado, A soa pristina.
+>>> TODO (Espadas): no projeto antigo (A Cartomante) Espadas cortava a VOZ do
+>>> Perec (camada A, arquivada). Sem voz, o cache de voz fica vazio e os
+>>> shards saem MUDOS -- placeholder ok. Decidir depois o sabor novo (ex:
+>>> fragmentar os proprios samples, bitcrush, reverse...).
+
+A degradacao age em PARALELO: sao vozes aditivas em b_synth.scd (SynthDefs
+glitch*) que SOAM como a maquina se desfazendo. Sem b_synth.scd carregado,
+o som do mundo (camada B) toca limpo.
 
   - o NAIPE escolhe o SABOR da corrupcao;
   - o VALOR da carta (A..K) escolhe a FORCA do golpe daquela carta (o "kick");
@@ -44,17 +48,16 @@ DEFAULT_PORT = 57120  # mesma porta do SC; namespace /mundo/* separado
 HERE = os.path.dirname(os.path.abspath(__file__))
 TTS_CACHE_DIR = os.path.join(HERE, "tts_cache")
 
-# Naipe -> glitch (os 4 elementos). Cada naipe e UM dos quatro.
+# Naipe -> glitch (a operacao sonora). Cada naipe e UMA operacao sobre o som.
 SUIT_GLITCH = {
-    "C": "detune",    # Copas   / agua  -> desafina
-    "O": "freeze",    # Ouros   / terra -> congela
-    "E": "shards",    # Espadas / ar    -> fragmenta a voz
-    "P": "saturate",  # Paus    / fogo  -> satura
+    "C": "detune",    # Copas   -> desafina
+    "O": "freeze",    # Ouros   -> congela
+    "E": "shards",    # Espadas -> fragmenta [PLACEHOLDER: voz vazia=mudo]
+    "P": "saturate",  # Paus    -> satura
 }
-SUIT_ELEMENT = {"C": "agua", "O": "terra", "E": "ar", "P": "fogo"}
 GLITCH_LABEL = {
     "detune": "desafina", "freeze": "congela",
-    "shards": "fragmenta a voz", "saturate": "satura",
+    "shards": "fragmenta [placeholder/mudo]", "saturate": "satura",
 }
 
 DEFAULT_STEP = 0.025   # quanto cada carta soma ao nivel global (1.0 em ~40 cartas)
@@ -122,7 +125,7 @@ class GlitchEngine:
             "/mundo/glitch", [tipo, float(self.level), float(kick)])
         if self.verbose:
             pct = int(round(self.level * 100))
-            print(f"[GLITCH] {rank}{suit} ({SUIT_ELEMENT.get(suit, '?')}) "
+            print(f"[GLITCH] {rank}{suit} "
                   f"-> {GLITCH_LABEL.get(tipo, tipo)}  |  corrupcao {pct}%")
 
     def reset(self):

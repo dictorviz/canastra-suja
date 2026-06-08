@@ -129,8 +129,8 @@ Server.default.waitForBoot({
     // vozes ADITIVAS que SOAM como a maquina corrompendo. Cada NAIPE e um
     // glitch; a intensidade vem do nivel global de corrupcao (0..1, acumulado
     // no Python, sobe a cada carta) e do "kick" (forca do valor da carta).
-    //   Copas(agua)=detune   Ouros(terra)=freeze
-    //   Espadas(ar)=shards(voz do Perec)   Paus(fogo)=saturate
+    //   Copas=detune   Ouros=freeze
+    //   Espadas=shards(voz do Perec)   Paus=saturate
     // =================================================================
 
     ~mundoCurrentBuf = nil;            // habitat atual (freeze/saturate mordem nele)
@@ -145,7 +145,7 @@ Server.default.waitForBoot({
         };
     }, "/mundo/voz_load");
 
-    // COPAS / agua -> DESAFINA: cluster de parciais que escorrega pra baixo.
+    // COPAS -> DESAFINA: cluster de parciais que escorrega pra baixo.
     SynthDef(\glitchDetune, { |level=0.3, kick=0.5, amp=0.3, pan=0, out=0|
         var freq, n=5, sig, env, dur, spread, sink;
         dur = 2.0 + (level * 4.0);                       // mais corrompido, arrasta mais
@@ -160,7 +160,7 @@ Server.default.waitForBoot({
         Out.ar(out, Pan2.ar(sig, pan.clip(-1, 1)));
     }).add;
 
-    // OUROS / terra -> CONGELA: uma janelinha do habitat trava e se repete.
+    // OUROS -> CONGELA: uma janelinha do habitat trava e se repete.
     SynthDef(\glitchFreeze, { |bufnum=0, level=0.3, kick=0.5, amp=0.35, pan=0, out=0|
         var sig, env, dur, winFrames, startFr, phasor;
         dur = 1.5 + (level * 3.5);
@@ -168,13 +168,13 @@ Server.default.waitForBoot({
         startFr = Rand(0.0, 1.0) * (BufFrames.kr(bufnum) - winFrames);
         phasor = Phasor.ar(0, BufRateScale.kr(bufnum), startFr, startFr + winFrames);
         sig = BufRd.ar(1, bufnum, phasor, loop: 1);
-        sig = sig * LFPulse.ar(6 + (level * 30), 0, 0.6);  // estria mecanica (terra)
+        sig = sig * LFPulse.ar(6 + (level * 30), 0, 0.6);  // estria mecanica
         env = EnvGen.kr(Env.linen(0.05, dur, 0.3, 1, \sin), doneAction: 2);
         sig = sig * env * amp * (level + kick).clip(0, 1.2);
         Out.ar(out, Pan2.ar(sig, pan.clip(-1, 1)));
     }).add;
 
-    // ESPADAS / ar -> FRAGMENTA A VOZ: granula uma palavra do Perec em cacos.
+    // ESPADAS -> FRAGMENTA A VOZ: granula uma palavra do Perec em cacos.
     SynthDef(\glitchShards, { |bufnum=0, level=0.3, kick=0.5, amp=0.6, out=0|
         var sig, env, dur, dens, trig, cpos, grainDur, rate;
         dur = 1.0 + (level * 3.0);
@@ -190,15 +190,15 @@ Server.default.waitForBoot({
         Out.ar(out, sig);                                 // TGrains ja sai em 2 canais
     }).add;
 
-    // PAUS / fogo -> SATURA: o habitat atual queima (drive + fold).
+    // PAUS -> SATURA: o habitat atual queima (drive + fold).
     SynthDef(\glitchSaturate, { |bufnum=0, level=0.3, kick=0.5, amp=0.3, pan=0, out=0|
         var sig, env, dur, drive, startFr;
         dur = 1.5 + (level * 3.0);
         drive = 1.0 + (level * 18.0) + (kick * 6.0);      // queima mais com o nivel
         startFr = Rand(0.0, 1.0) * BufFrames.kr(bufnum);
         sig = PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), startPos: startFr, loop: 1);
-        sig = (sig * drive).tanh.fold2(0.9);              // satura e dobra (fogo)
-        sig = HPF.ar(sig, 200 + (level * 600));           // brilho de brasa
+        sig = (sig * drive).tanh.fold2(0.9);              // satura e dobra
+        sig = HPF.ar(sig, 200 + (level * 600));           // brilho que cresce
         env = EnvGen.kr(Env.perc(0.05, dur, 1, \sin), doneAction: 2);
         sig = sig * env * amp * (0.5 + level);
         Out.ar(out, Pan2.ar(sig, pan.clip(-1, 1)));
