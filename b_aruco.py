@@ -8,8 +8,10 @@ b_partida, o mesmo efeito do teclado:
 
     partida.jogar(rank, suit)   # atravessa habitat (b_samples) + degradacao (b_glitch)
 
-A PROJECAO e a propria imagem da WEBCAM (com os marcadores detectados
-desenhados + um HUD opcional: de quem e a vez, ultima carta, degradacao).
+A PROJECAO e a propria imagem da WEBCAM com os contornos de tracking do ArUco
+desenhados (distopico, fica pro publico) e ela APODRECE conforme a degradacao
+sobe -- comeca documental (Ato I) e desmorona ate o fim (Ato IV). O HUD de
+operador (vez/ultima/barra) e opcional e fica DESLIGADO por padrao (tecla 'h').
 
 MAPA carta <-> marcador (dicionario DICT_4X4_100, ids 0..53):
     id 0..51 -> carta normal: suit = id // 13 (0=C,1=O,2=E,3=P); rank = id % 13
@@ -20,20 +22,24 @@ USO:
     python b_aruco.py gerar      # gera os 54 PNGs dos marcadores pra imprimir
     python b_aruco.py gerar out  # idem, na pasta 'out/'
 
-TECLAS na janela: q/ESC=sair  f=tela cheia  h=liga/desliga HUD  m=espelhar
+TECLAS na janela: q/ESC=sair  f=tela cheia  h=HUD operador  m=espelhar
+                  g=liga/desliga o apodrecer da imagem  r=nova mao
 
 Requer: pip install opencv-contrib-python  +  uma webcam.
 """
 
 import os
+import random
 import sys
 
 try:
     import cv2
     import cv2.aruco as aruco
+    import numpy as np
 except ImportError:  # OpenCV ausente: o modulo ainda importa (mapa/fallback)
     cv2 = None
     aruco = None
+    np = None
 
 from b_samples import RANKS, SUIT_NAMES
 
@@ -138,6 +144,56 @@ def _draw_hud(frame, partida):
     _put(frame, f"degradacao {int(pct * 100)}%", (bx, by - 8), 0.6, (255, 255, 255), 1)
 
 
+def _degradar(frame, level: float):
+    """Apodrece a imagem conforme a degradacao (0..1) sobe -- a PROJECAO suja
+    junto com o som. level ~0 = limpo/documental (Ato I: o tarot); level alto =
+    a imagem quase desmoronando (Ato IV: o buteco em colapso). Ecoa os glitches
+    de audio: sangria de cor (~detune), bitcrush (~saturate), blocos arrancados
+    (~freeze/shards). Tudo barato (numpy/OpenCV), sem camada visual extra."""
+    if np is None or level <= 0.01:
+        return frame
+    h, w = frame.shape[:2]
+    out = frame
+
+    # 1. sangria de cor: canais B e R escorregam em sentidos opostos
+    shift = int(level * 14)
+    if shift > 0:
+        b, g, r = cv2.split(out)
+        out = cv2.merge([np.roll(b, shift, axis=1), g, np.roll(r, -shift, axis=1)])
+
+    # 2. bitcrush de cor: esmaga a profundidade de bits (ecoa o som queimado)
+    bits = int(round(level * 5))                  # ate 5 bits fora -> 3-bit color
+    if bits > 0:
+        mask = (0xFF << bits) & 0xFF
+        out = (out & np.uint8(mask))
+
+    # 3. scanlines: estrias que escurecem linhas alternadas
+    if level > 0.2:
+        dark = 1.0 - ((level - 0.2) * 0.7)
+        out = out.copy()
+        out[::2, :] = (out[::2, :] * dark).astype(np.uint8)
+
+    # 4. blocos arrancados e jogados de lado (datamosh tosco)
+    nblocks = int(level * 10)
+    if nblocks > 0:
+        out = out.copy() if out.base is frame else out
+        amp = int(level * 40)
+        for _ in range(nblocks):
+            bw = random.randint(20, max(21, w // 6))
+            bh = random.randint(8, max(9, h // 12))
+            x = random.randint(0, w - bw); y = random.randint(0, h - bh)
+            x2 = min(max(x + random.randint(-amp, amp), 0), w - bw)
+            out[y:y + bh, x2:x2 + bw] = out[y:y + bh, x:x + bw]
+
+    # 5. ruido granulado que cresce (um so canal, espalhado nos tres)
+    if level > 0.3:
+        sigma = (level - 0.3) * 60
+        noise = np.random.normal(0, sigma, (h, w, 1)).astype(np.int16)
+        out = np.clip(out.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+    return out
+
+
 def _open_camera(index: int):
     # No Windows, CAP_DSHOW abre mais rapido e evita o backend MSMF travar.
     if sys.platform.startswith("win"):
@@ -163,8 +219,14 @@ GONE_FRAMES = 8
 
 
 def run(num_jogadores: int, seed=None, camera_index: int = 0,
-        fullscreen: bool = False, mirror: bool = False, hud: bool = True):
-    """Roda a partida com captacao por webcam. A janela e a projecao."""
+        fullscreen: bool = False, mirror: bool = False, hud: bool = False,
+        degradar: bool = True):
+    """Roda a partida com captacao por webcam. A janela e a projecao.
+
+    A projecao mostra o feed cru + os contornos de tracking do ArUco (distopico,
+    pro publico) e APODRECE conforme a degradacao sobe (_degradar). O HUD de
+    operador (vez, %, barra) fica DESLIGADO por padrao -- e chrome de engenheiro,
+    nao cena; ligue com 'h' so pra conferir o estado. 'g' liga/desliga o apodrecer."""
     if cv2 is None:
         print("[!] OpenCV ausente. pip install opencv-contrib-python")
         return
@@ -191,9 +253,10 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
 
     seen = {}    # id -> quadros consecutivos visto (estabilidade)
     active = {}  # id -> quadros consecutivos sumido (presente=ja disparou)
+    prev_disp = None  # ultimo quadro projetado (pro stutter da degradacao)
 
     print("\n[OK] webcam no ar. Vire as cartas na frente da camera.")
-    print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  r=nova mao\n")
+    print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao\n")
 
     try:
         while True:
@@ -208,14 +271,23 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 present = {int(x) for x in ids.flatten()}
                 aruco.drawDetectedMarkers(frame, corners, ids)
 
-            # dispara cada marcador NOVO e estavel
+            # marcadores NOVOS e estaveis deste quadro (varios juntos = rajada)
+            fired = []
             for mid in present:
                 seen[mid] = seen.get(mid, 0) + 1
                 if mid in active:
                     active[mid] = 0  # continua na mesa
                 elif seen[mid] >= STABLE_FRAMES:
-                    _disparar(partida, mid)
+                    card = id_to_card(mid)
+                    if card is not None:
+                        fired.append(card)
                     active[mid] = 0
+            # 1 carta = jogada normal; varias no mesmo quadro = canastra baixada
+            # de uma vez -> rajada (cama em cascata, camada B consolidada)
+            if len(fired) == 1:
+                partida.jogar_carta(fired[0])
+            elif len(fired) > 1:
+                partida.jogar_rajada(fired)
             # quem saiu de cena: conta ausencia ate liberar pra disparar de novo
             for mid in list(active.keys()):
                 if mid not in present:
@@ -227,8 +299,19 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 if mid not in present and mid not in active:
                     seen.pop(mid, None)
 
-            disp = cv2.flip(frame, 1) if mirror else frame
-            if hud:
+            disp = cv2.flip(frame, 1) if mirror else frame.copy()
+            # a projecao apodrece com a degradacao; perto do teto ela ate TRAVA
+            # as vezes (stutter, ecoa o freeze do som). O tracking nao se importa:
+            # a deteccao roda no 'frame' cru, nao nesta imagem.
+            if degradar:
+                lvl = partida.corrupcao
+                if (prev_disp is not None and lvl > 0.5
+                        and random.random() < (lvl - 0.5) * 0.6):
+                    disp = prev_disp
+                else:
+                    disp = _degradar(disp, lvl)
+                    prev_disp = disp
+            if hud:  # operador: ligar so pra conferir (aparece pro publico tb)
                 _draw_hud(disp, partida)
             cv2.imshow(win, disp)
 
@@ -242,6 +325,8 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 hud = not hud
             elif key == ord('m'):
                 mirror = not mirror
+            elif key == ord('g'):
+                degradar = not degradar
             elif key == ord('r'):
                 partida.reset()
     finally:
@@ -249,18 +334,6 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
         cv2.destroyAllWindows()
         partida.encerrar()
         print("Fim da mao. O baralho se recolhe, sujo.")
-
-
-def _disparar(partida, marker_id: int):
-    """Marcador detectado -> joga a carta correspondente."""
-    card = id_to_card(marker_id)
-    if card is None:
-        return
-    rank, suit = card
-    if suit is None:  # coringa
-        partida.jogar_joker()
-    else:
-        partida.jogar(rank, suit)
 
 
 # =============================================================================

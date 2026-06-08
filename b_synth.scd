@@ -130,7 +130,7 @@ Server.default.waitForBoot({
     // glitch; a intensidade vem do nivel global de corrupcao (0..1, acumulado
     // no Python, sobe a cada carta) e do "kick" (forca do valor da carta).
     //   Copas=detune   Ouros=freeze
-    //   Espadas=shards(voz do Perec)   Paus=saturate
+    //   Espadas=shards(habitat atual)   Paus=saturate
     // =================================================================
 
     ~mundoCurrentBuf = nil;            // habitat atual (freeze/saturate mordem nele)
@@ -174,17 +174,23 @@ Server.default.waitForBoot({
         Out.ar(out, Pan2.ar(sig, pan.clip(-1, 1)));
     }).add;
 
-    // ESPADAS -> FRAGMENTA A VOZ: granula uma palavra do Perec em cacos.
-    SynthDef(\glitchShards, { |bufnum=0, level=0.3, kick=0.5, amp=0.6, out=0|
-        var sig, env, dur, dens, trig, cpos, grainDur, rate;
+    // ESPADAS -> FRAGMENTA O HABITAT: granula o habitat ATUAL em cacos. A voz do
+    // Perec saiu (arquivada); a espada agora estilhaca o proprio mundo que toca.
+    // Escolhe uma REGIAO do habitat longo e os graos vagam numa janela que se
+    // abre com o nivel -- comeca coeso, vira poeira conforme corrompe.
+    SynthDef(\glitchShards, { |bufnum=0, level=0.3, kick=0.5, amp=0.5, out=0|
+        var sig, env, dur, dens, trig, cpos, grainDur, rate, center, win, bdur;
         dur = 1.0 + (level * 3.0);
-        dens = 8 + (level * 30);                          // cacos por segundo
+        bdur = BufDur.kr(bufnum);
+        dens = 8 + (level * 34);                          // cacos por segundo
         trig = Impulse.ar(dens);
-        cpos = TRand.ar(0.02, (BufDur.kr(bufnum) - 0.02).max(0.03), trig);  // ponto da palavra
+        center = Rand(0.05, 0.95) * bdur;                 // a regiao estilhacada
+        win = 0.05 + (level * 0.5);                       // janela (s) abre com o nivel
+        cpos = (center + TRand.ar(win.neg, win, trig)).clip(0.02, (bdur - 0.02).max(0.03));
         grainDur = (1 / dens) * (1.0 + level);
         rate = TRand.ar(0.6, 1.5, trig);                  // cacos desafinados
         sig = TGrains.ar(2, trig, bufnum, rate, cpos, grainDur,
-                         TRand.ar(-0.6, 0.6, trig), 1, 2);  // pan espalhado
+                         TRand.ar(-0.7, 0.7, trig), 1, 2);  // pan espalhado
         env = EnvGen.kr(Env.linen(0.02, dur, 0.25, 1, \sin), doneAction: 2);
         sig = sig * env * amp * (level + kick).clip(0, 1.3);
         Out.ar(out, sig);                                 // TGrains ja sai em 2 canais
@@ -222,10 +228,10 @@ Server.default.waitForBoot({
             };
         }
         { tipo == "shards" } {
-            var keys = ~vozBuffers.keys.asArray;
-            if(keys.size > 0) {
-                Synth(\glitchShards, [\bufnum, ~vozBuffers[keys.choose],
-                      \level, level, \kick, kick], addAction: \addToTail);
+            // Espadas estilhaca o HABITAT ATUAL (a voz do Perec foi arquivada).
+            if(~mundoCurrentBuf.notNil) {
+                Synth(\glitchShards, [\bufnum, ~mundoCurrentBuf, \level, level,
+                      \kick, kick], addAction: \addToTail);
             };
         }
         { tipo == "saturate" } {

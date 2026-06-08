@@ -49,6 +49,53 @@ class Partida:
         self.ultima = (rank, suit)
         self.mesa.proximo()
 
+    def jogar_carta(self, card: Tuple[str, Optional[str]]):
+        """Despacha uma carta (rank, suit) ou ('JOKER', None). Conveniencia pro
+        ArUco, que ja trabalha com tuplas vindas de id_to_card."""
+        rank, suit = card
+        if suit is None:
+            self.jogar_joker()
+        else:
+            self.jogar(rank, suit)
+
+    def jogar_rajada(self, cartas):
+        """Varias cartas baixadas JUNTAS (ex: uma canastra inteira de uma vez).
+
+        A cama BADALA cada carta (cascata ressonante -- e desejavel, o vibrafone
+        empilha bonito). Mas a camada B CONSOLIDA: um unico crossfade de habitat
+        e um unico passo de degradacao (o golpe da carta mais forte da rajada),
+        senao 6 cartas atropelariam o mundo com 6 travessias simultaneas. A vez
+        passa UMA vez -- baixar uma canastra e uma jogada so."""
+        cartas = [c for c in cartas if c is not None]
+        if not cartas:
+            return
+        if len(cartas) == 1:
+            self.jogar_carta(cartas[0])
+            return
+
+        # 1. cama: cascata -- toda carta soa na hora
+        for rank, suit in cartas:
+            if suit is None:
+                self.cama.tocar_joker()
+            else:
+                self.cama.tocar_carta(rank, suit)
+
+        # 2. camada B consolidada: a carta de golpe mais forte rege a travessia
+        def _kick(c):
+            return 1.0 if c[1] is None else self.glitch._kick_for_rank(c[0])
+        rank, suit = max(cartas, key=_kick)
+        if suit is None:                       # rajada liderada por um coringa
+            suit = self._rng.choice(self.suits)
+            kick = 1.0
+        else:
+            kick = self.glitch._kick_for_rank(rank)
+        self.player.play_card(rank, suit)      # UM habitat atravessa
+        self.glitch.corrupt(rank, suit, kick=kick)  # UM passo de degradacao
+        self.ultima = (rank, suit)
+
+        # 3. a vez passa uma unica vez
+        self.mesa.proximo()
+
     def jogar_joker(self):
         """Curingao: acento na cama + naipe sorteado (espacializacao) + forca maxima."""
         suit = self._rng.choice(self.suits)

@@ -6,13 +6,13 @@ cujo SABOR vem do NAIPE -- cada naipe e uma OPERACAO sobre o som:
 
     Copas    -> DESAFINA     a altura escorrega/afunda
     Ouros    -> CONGELA      um grao trava/repete
-    Espadas  -> FRAGMENTA    [PLACEHOLDER - ver TODO abaixo]
+    Espadas  -> FRAGMENTA    granula o HABITAT ATUAL em cacos (ver nota abaixo)
     Paus     -> SATURA       queima/distorce
 
->>> TODO (Espadas): no projeto antigo (A Cartomante) Espadas cortava a VOZ do
->>> Perec (camada A, arquivada). Sem voz, o cache de voz fica vazio e os
->>> shards saem MUDOS -- placeholder ok. Decidir depois o sabor novo (ex:
->>> fragmentar os proprios samples, bitcrush, reverse...).
+>>> Espadas (resolvido): no projeto antigo (A Cartomante) a espada cortava a
+>>> VOZ do Perec (arquivada). Sem voz, ela agora estilhaca o PROPRIO habitat
+>>> que esta tocando -- TGrains sobre ~mundoCurrentBuf no b_synth.scd. Nao
+>>> depende mais do tts_cache (load_voice virou opcional/legado).
 
 A degradacao age em PARALELO: sao vozes aditivas em b_synth.scd (SynthDefs
 glitch*) que SOAM como a maquina se desfazendo. Sem b_synth.scd carregado,
@@ -57,10 +57,14 @@ SUIT_GLITCH = {
 }
 GLITCH_LABEL = {
     "detune": "desafina", "freeze": "congela",
-    "shards": "fragmenta [placeholder/mudo]", "saturate": "satura",
+    "shards": "fragmenta", "saturate": "satura",
 }
 
-DEFAULT_STEP = 0.025   # quanto cada carta soma ao nivel global (1.0 em ~40 cartas)
+# Fracao da DISTANCIA que falta pro teto que cada carta fecha (curva assintotica:
+# ver corrupt()). A degradacao sobe rapido no comeco e desacelera perto do fim,
+# mas NUNCA chega em 1.0 -- sempre sobra pra onde piorar, sem plato, qualquer que
+# seja o tamanho da mao (uma mao de Buraco varia muito de carta a carta).
+DEFAULT_STEP = 0.04
 DEFAULT_WORDS = 16     # quantas palavras do Perec a espada tem pra cortar
 
 
@@ -120,7 +124,9 @@ class GlitchEngine:
             return
         if kick is None:
             kick = self._kick_for_rank(rank)
-        self.level = min(1.0, self.level + self.step)
+        # curva assintotica: fecha uma fracao do que falta pro teto. Sobe forte
+        # cedo, desacelera perto do fim, mas nunca satura em 1.0 (sem plato).
+        self.level += self.step * (1.0 - self.level)
         self.client.send_message(
             "/mundo/glitch", [tipo, float(self.level), float(kick)])
         if self.verbose:
