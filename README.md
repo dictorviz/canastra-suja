@@ -248,13 +248,16 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
   `.`=silêncio, `r`=nova mão, `q`=sair), faz o parse e chama os métodos da
   `Partida`. `run_partida(num, seed)` é o laço, reaproveitado pelo `main.py`.
 
-- **`b_aruco.py`** — fonte de carta por **webcam + ArUco** (OpenCV). Cada carta
-  física ganha um marcador ArUco impresso (`DICT_4X4_100`, ids 0–53). A função:
-  - `id_to_card` / `card_to_id` — o mapa carta ↔ marcador (`suit = id // 13`,
-    `rank = id % 13`; ids 52/53 = coringas). **Não depende de OpenCV** (o mapa
-    importa mesmo sem câmera).
-  - `gerar_marcadores()` — `python b_aruco.py gerar` salva os 54 PNGs (com
-    rótulo) em `marcadores/` pra imprimir e colar.
+- **`b_aruco.py`** — fonte de carta por **webcam + ArUco** (OpenCV). Como o
+  Buraco joga com **2 baralhos**, são `2 × 54 = 108` marcadores (`DICT_4X4_250`,
+  ids 0–107). A função:
+  - `id_to_card` / `card_to_id` — o mapa carta ↔ marcador. Cada baralho tem 54
+    ids; o **deck B (54–107) dobra sobre o deck A** (`local = id % 54`;
+    `suit = local // 13`, `rank = local % 13`; locais 52/53 = coringas), então as
+    duas vias da mesma carta caem na mesma `(rank, naipe)`. **Não depende de
+    OpenCV** (o mapa importa mesmo sem câmera).
+  - `gerar_marcadores()` — `python b_aruco.py gerar` salva os 108 PNGs (com
+    rótulo: carta + id + baralho A/B) em `marcadores/` pra imprimir e colar.
   - `run(...)` — o laço: abre a webcam, detecta marcadores, e com **debounce**
     (um marcador precisa ficar estável alguns quadros pra disparar uma vez, e só
     redispara se sumir e voltar) joga a carta na `Partida`. **A janela da webcam
@@ -345,13 +348,14 @@ arquivo/
      cheia, `h`=HUD, `m`=espelhar, `r`=nova mão.
 
 **Marcadores ArUco** (pra colar nas cartas): `python b_aruco.py gerar` salva
-54 PNGs em `marcadores/` (52 cartas + 2 coringas). Imprima e cole.
+108 PNGs em `marcadores/` — **2 baralhos** de 54 (52 cartas + 2 coringas cada).
+Imprima e cole.
 
 ### Portas de entrada diretas (sem o menu)
 ```
 python b_teclado.py     # cartas no teclado (cama + mundo) — precisa de a_synth.scd + b_synth.scd
 python b_aruco.py       # cartas pela webcam — precisa de a_synth.scd + b_synth.scd + OpenCV
-python b_aruco.py gerar # gera os 54 marcadores ArUco em marcadores/
+python b_aruco.py gerar # gera os 108 marcadores ArUco (2 baralhos) em marcadores/
 python a_cama.py        # demo: simula cartas tocando o vibrafone ao vivo — precisa de a_synth.scd
 python a_osc.py 60      # a cama AUTÔNOMA (generativa), 60s — só pra testar o synth
 python b_samples.py     # demo: atravessa alguns habitats sozinho

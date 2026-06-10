@@ -29,6 +29,7 @@ USO RAPIDO (com SC + a_synth.scd E b_synth.scd rodando):
 """
 
 import glob
+import math
 import os
 import random
 import time
@@ -64,8 +65,16 @@ GLITCH_LABEL = {
 # ver corrupt()). A degradacao sobe rapido no comeco e desacelera perto do fim,
 # mas NUNCA chega em 1.0 -- sempre sobra pra onde piorar, sem plato, qualquer que
 # seja o tamanho da mao (uma mao de Buraco varia muito de carta a carta).
-DEFAULT_STEP = 0.04
+# Passo BAIXO de proposito: o arco e longo, documental por boa parte da mao
+# (~50% so la pela 45a carta). Calibre no olho/ouvido tocando de verdade.
+DEFAULT_STEP = 0.015
 DEFAULT_WORDS = 16     # quantas palavras do Perec a espada tem pra cortar
+
+# Decaimento do "soco" visual de cada carta (segundos): a operacao do naipe
+# acende na projecao quando a carta cai e some em ~VID_KICK_TAU s. So o b_aruco
+# le isso (video_kicks) -- e o elo que faz a imagem glitchar PELO NAIPE, igual
+# ao audio, e nao so pelo nivel global.
+VID_KICK_TAU = 0.45
 
 
 # =============================================================================
@@ -83,6 +92,7 @@ class GlitchEngine:
         self.step = step
         self.max_words = max_words
         self.level = 0.0  # nivel global de corrupcao, 0.0 -> 1.0
+        self._vid_kick = {}  # op -> (pico, instante) -- o soco visual por naipe
         if verbose:
             print(f"[GLITCH] corrupcao paralela -> {host}:{port} (/mundo/glitch)")
 
@@ -129,14 +139,32 @@ class GlitchEngine:
         self.level += self.step * (1.0 - self.level)
         self.client.send_message(
             "/mundo/glitch", [tipo, float(self.level), float(kick)])
+        # acende o soco visual do naipe (o b_aruco le e glitcha a projecao
+        # PELO NAIPE -- mesma operacao do audio, so que na imagem)
+        self._vid_kick[tipo] = (float(kick), time.time())
         if self.verbose:
             pct = int(round(self.level * 100))
             print(f"[GLITCH] {rank}{suit} "
                   f"-> {GLITCH_LABEL.get(tipo, tipo)}  |  corrupcao {pct}%")
 
+    def video_kicks(self) -> dict:
+        """O 'soco' visual de cada naipe AGORA, decaindo no tempo. So o b_aruco
+        le isso (a cada quadro): cada carta acende a operacao do seu naipe na
+        projecao -- detune/freeze/shards/saturate, as mesmas chaves do audio --
+        e ela some em ~VID_KICK_TAU s. E o que faz a IMAGEM glitchar pelo naipe,
+        nao so pelo acumulo. Sem video (teclado), ninguem chama -- custo zero."""
+        now = time.time()
+        out = {}
+        for op, (peak, t) in self._vid_kick.items():
+            v = peak * math.exp(-(now - t) / VID_KICK_TAU)
+            if v > 0.01:
+                out[op] = v
+        return out
+
     def reset(self):
         """Zera a corrupcao -- nova consulta / nova performance."""
         self.level = 0.0
+        self._vid_kick.clear()
         self.client.send_message("/mundo/glitch_reset", [])
         if self.verbose:
             print("[GLITCH] corrupcao zerada (nova consulta).")

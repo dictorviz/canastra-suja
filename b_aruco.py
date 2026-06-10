@@ -13,13 +13,18 @@ desenhados (distopico, fica pro publico) e ela APODRECE conforme a degradacao
 sobe -- comeca documental (Ato I) e desmorona ate o fim (Ato IV). O HUD de
 operador (vez/ultima/barra) e opcional e fica DESLIGADO por padrao (tecla 'h').
 
-MAPA carta <-> marcador (dicionario DICT_4X4_100, ids 0..53):
-    id 0..51 -> carta normal: suit = id // 13 (0=C,1=O,2=E,3=P); rank = id % 13
-    id 52,53 -> coringas (curingao / JOKER)
+MAPA carta <-> marcador (dicionario DICT_4X4_250, ids 0..107):
+    Buraco joga com 2 BARALHOS, entao sao 2 x 54 = 108 marcadores. Cada baralho
+    tem 54 ids (52 cartas + 2 coringas); o deck B (ids 54..107) DOBRA sobre o
+    deck A: a 2a via de cada carta cai na MESMA (rank, naipe) -- duas damas de
+    copas sao a mesma carta pro jogo, so mudam de id (a deteccao exige id unico).
+      local = id % 54
+      local 0..51 -> carta normal: suit = local // 13 (0=C,1=O,2=E,3=P); rank = local % 13
+      local 52,53 -> coringas (curingao / JOKER)
 
 USO:
     python b_aruco.py            # roda a deteccao (pergunta jogadores/seed/camera)
-    python b_aruco.py gerar      # gera os 54 PNGs dos marcadores pra imprimir
+    python b_aruco.py gerar      # gera os 108 PNGs dos marcadores pra imprimir
     python b_aruco.py gerar out  # idem, na pasta 'out/'
 
 TECLAS na janela: q/ESC=sair  f=tela cheia  h=HUD operador  m=espelhar
@@ -45,8 +50,11 @@ from b_samples import RANKS, SUIT_NAMES
 
 # Ordem dos naipes pra convencao de id (id // 13). Bate com SUIT_NAMES.
 SUIT_ORDER = ["C", "O", "E", "P"]
-N_NORMAL = 52  # ids 0..51; 52 e 53 sao coringas
-ARUCO_DICT_ID = "DICT_4X4_100"  # >= 54 ids; 4x4 imprime pequeno
+N_NORMAL = 52              # por baralho: cartas nos locais 0..51
+DECK_SIZE = N_NORMAL + 2   # 54 ids por baralho (52 cartas + 2 coringas)
+N_DECKS = 2                # Buraco joga com 2 baralhos
+N_MARKERS = DECK_SIZE * N_DECKS  # 108 marcadores ao todo (ids 0..107)
+ARUCO_DICT_ID = "DICT_4X4_250"  # >= 108 ids; 4x4 ainda imprime pequeno
 
 
 # =============================================================================
@@ -54,23 +62,27 @@ ARUCO_DICT_ID = "DICT_4X4_100"  # >= 54 ids; 4x4 imprime pequeno
 # =============================================================================
 
 def id_to_card(marker_id: int):
-    """id 0..51 -> (rank, suit); id 52,53 -> ('JOKER', None); fora -> None."""
-    if marker_id < 0:
+    """Mapa id -> carta, com os 2 baralhos DOBRADOS na mesma carta.
+
+    id 0..107 (2 baralhos de 54). local = id % 54 ignora QUAL baralho:
+    local 0..51 -> (rank, suit); local 52,53 -> ('JOKER', None). Fora -> None.
+    """
+    if marker_id < 0 or marker_id >= N_MARKERS:
         return None
-    if marker_id < N_NORMAL:
-        suit = SUIT_ORDER[marker_id // len(RANKS)]
-        rank = RANKS[marker_id % len(RANKS)]
+    local = marker_id % DECK_SIZE  # deck B (54..107) cai sobre o deck A
+    if local < N_NORMAL:
+        suit = SUIT_ORDER[local // len(RANKS)]
+        rank = RANKS[local % len(RANKS)]
         return rank, suit
-    if marker_id < N_NORMAL + 2:
-        return "JOKER", None
-    return None
+    return "JOKER", None
 
 
-def card_to_id(rank: str, suit: str):
-    """Inverso de id_to_card -- util pra gerar os marcadores na ordem certa."""
+def card_to_id(rank: str, suit: str, deck: int = 0):
+    """Inverso de id_to_card. Com 2 baralhos o inverso nao e unico: 'deck'
+    (0=A, 1=B) escolhe qual das duas vias retornar."""
     if suit not in SUIT_ORDER or rank not in RANKS:
         return None
-    return SUIT_ORDER.index(suit) * len(RANKS) + RANKS.index(rank)
+    return deck * DECK_SIZE + SUIT_ORDER.index(suit) * len(RANKS) + RANKS.index(rank)
 
 
 def _card_name(marker_id: int) -> str:
@@ -91,31 +103,38 @@ def _aruco_dict():
 # =============================================================================
 
 def gerar_marcadores(out_dir: str = "marcadores", size: int = 600):
-    """Salva um PNG por carta (52 + 2 coringas) com rotulo, pra imprimir."""
+    """Salva um PNG por marcador (2 baralhos x 54 = 108) com rotulo, pra imprimir.
+
+    O rotulo traz a carta, o id e o baralho (A/B). As duas vias da mesma carta
+    tem ids diferentes (a deteccao precisa de id unico) mas o MESMO nome de carta.
+    """
     if cv2 is None:
         print("[!] OpenCV ausente. pip install opencv-contrib-python")
         return
     os.makedirs(out_dir, exist_ok=True)
     dic = _aruco_dict()
-    for mid in range(N_NORMAL + 2):
+    for mid in range(N_MARKERS):
         marker = aruco.generateImageMarker(dic, mid, size)
         # margem branca + rotulo legivel embaixo
         canvas = cv2.copyMakeBorder(marker, 50, 110, 50, 50,
                                     cv2.BORDER_CONSTANT, value=255)
+        deck = "AB"[mid // DECK_SIZE]
         card = id_to_card(mid)
         if card and card[1] is None:
-            label = f"JOKER  (id {mid})"
+            label = f"JOKER  (id {mid} - baralho {deck})"
         elif card:
-            label = f"{card[0]} {SUIT_NAMES[card[1]]}  (id {mid})"
+            label = f"{card[0]} {SUIT_NAMES[card[1]]}  (id {mid} - baralho {deck})"
         else:
             label = f"id {mid}"
         h = canvas.shape[0]
         cv2.putText(canvas, label, (50, h - 35),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 2, cv2.LINE_AA)
-        path = os.path.join(out_dir, f"marker_{mid:02d}_{_card_name(mid)}.png")
+        path = os.path.join(out_dir,
+                            f"marker_{mid:03d}_{deck}_{_card_name(mid)}.png")
         cv2.imwrite(path, canvas)
-    print(f"[OK] {N_NORMAL + 2} marcadores em '{out_dir}/' "
-          f"(dicionario {ARUCO_DICT_ID}, {size}px). Imprima e cole nas cartas.")
+    print(f"[OK] {N_MARKERS} marcadores em '{out_dir}/' "
+          f"({N_DECKS} baralhos x {DECK_SIZE}, dicionario {ARUCO_DICT_ID}, "
+          f"{size}px). Imprima e cole nas cartas.")
 
 
 # =============================================================================
@@ -144,40 +163,54 @@ def _draw_hud(frame, partida):
     _put(frame, f"degradacao {int(pct * 100)}%", (bx, by - 8), 0.6, (255, 255, 255), 1)
 
 
-def _degradar(frame, level: float):
-    """Apodrece a imagem conforme a degradacao (0..1) sobe -- a PROJECAO suja
-    junto com o som. level ~0 = limpo/documental (Ato I: o tarot); level alto =
-    a imagem quase desmoronando (Ato IV: o buteco em colapso). Ecoa os glitches
-    de audio: sangria de cor (~detune), bitcrush (~saturate), blocos arrancados
-    (~freeze/shards). Tudo barato (numpy/OpenCV), sem camada visual extra."""
-    if np is None or level <= 0.01:
+def _degradar(frame, level: float, kicks=None):
+    """Apodrece a imagem: um PISO global (level 0..1) que sobe DEVAGAR com o
+    acumulo + um SOCO por carta na operacao do NAIPE que caiu (kicks), espelhando
+    o glitch de audio. As mesmas chaves do b_glitch (detune/freeze/shards/saturate):
+
+        Copas   detune   -> sangria de cor (canais B/R escorregam)
+        Paus    saturate -> bitcrush de cor (esmaga bits, queima)
+        Espadas shards   -> blocos arrancados (datamosh tosco)
+        Ouros   freeze   -> trava de quadro (stutter) -- tratado no LOOP, nao aqui
+
+    level ~0 = limpo/documental (Ato I: o tarot); level alto = a imagem quase
+    desmoronando (Ato IV: o buteco em colapso). Cada carta pokeia a imagem do
+    JEITO do seu naipe ja cedo; o piso so engrossa o caldo com o tempo. Tudo
+    barato (numpy/OpenCV), sem camada visual extra."""
+    kicks = kicks or {}
+    if np is None or (level <= 0.01 and not kicks):
         return frame
     h, w = frame.shape[:2]
     out = frame
 
-    # 1. sangria de cor: canais B e R escorregam em sentidos opostos
-    shift = int(level * 14)
+    # forca de cada efeito = piso (level, lento) + soco do naipe (kick), ate 1.0
+    chroma = min(1.0, level * 0.5 + kicks.get("detune", 0.0))    # Copas
+    crush = min(1.0, level * 0.6 + kicks.get("saturate", 0.0))   # Paus
+    shred = min(1.0, level * 0.5 + kicks.get("shards", 0.0))     # Espadas
+
+    # 1. sangria de cor (Copas/detune): canais B e R escorregam em sentidos opostos
+    shift = int(chroma * 16)
     if shift > 0:
         b, g, r = cv2.split(out)
         out = cv2.merge([np.roll(b, shift, axis=1), g, np.roll(r, -shift, axis=1)])
 
-    # 2. bitcrush de cor: esmaga a profundidade de bits (ecoa o som queimado)
-    bits = int(round(level * 5))                  # ate 5 bits fora -> 3-bit color
+    # 2. bitcrush de cor (Paus/saturate): esmaga a profundidade de bits
+    bits = int(round(crush * 5))                  # ate 5 bits fora -> 3-bit color
     if bits > 0:
         mask = (0xFF << bits) & 0xFF
         out = (out & np.uint8(mask))
 
-    # 3. scanlines: estrias que escurecem linhas alternadas
+    # 3. scanlines: estrias que escurecem linhas alternadas (puro acumulo)
     if level > 0.2:
         dark = 1.0 - ((level - 0.2) * 0.7)
         out = out.copy()
         out[::2, :] = (out[::2, :] * dark).astype(np.uint8)
 
-    # 4. blocos arrancados e jogados de lado (datamosh tosco)
-    nblocks = int(level * 10)
+    # 4. blocos arrancados (Espadas/shards): datamosh tosco
+    nblocks = int(shred * 12)
     if nblocks > 0:
-        out = out.copy() if out.base is frame else out
-        amp = int(level * 40)
+        out = out.copy() if out is frame else out
+        amp = int(shred * 44)
         for _ in range(nblocks):
             bw = random.randint(20, max(21, w // 6))
             bh = random.randint(8, max(9, h // 12))
@@ -185,7 +218,7 @@ def _degradar(frame, level: float):
             x2 = min(max(x + random.randint(-amp, amp), 0), w - bw)
             out[y:y + bh, x2:x2 + bw] = out[y:y + bh, x:x + bw]
 
-    # 5. ruido granulado que cresce (um so canal, espalhado nos tres)
+    # 5. ruido granulado que cresce com o acumulo (um so canal, nos tres)
     if level > 0.3:
         sigma = (level - 0.3) * 60
         noise = np.random.normal(0, sigma, (h, w, 1)).astype(np.int16)
@@ -300,16 +333,20 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                     seen.pop(mid, None)
 
             disp = cv2.flip(frame, 1) if mirror else frame.copy()
-            # a projecao apodrece com a degradacao; perto do teto ela ate TRAVA
-            # as vezes (stutter, ecoa o freeze do som). O tracking nao se importa:
+            # a projecao apodrece com a degradacao E glitcha PELO NAIPE de cada
+            # carta (video_kicks: detune->cor, saturate->bitcrush, shards->blocos,
+            # freeze->trava de quadro aqui embaixo). O tracking nao se importa:
             # a deteccao roda no 'frame' cru, nao nesta imagem.
             if degradar:
                 lvl = partida.corrupcao
-                if (prev_disp is not None and lvl > 0.5
-                        and random.random() < (lvl - 0.5) * 0.6):
+                kicks = partida.glitch.video_kicks()
+                # Ouros (freeze) -> trava de quadro: o soco do naipe + o acumulo
+                # perto do teto decidem a chance de repetir o quadro anterior.
+                stutter = max(0.0, (lvl - 0.5) * 0.6) + kicks.get("freeze", 0.0) * 0.8
+                if prev_disp is not None and random.random() < stutter:
                     disp = prev_disp
                 else:
-                    disp = _degradar(disp, lvl)
+                    disp = _degradar(disp, lvl, kicks)
                     prev_disp = disp
             if hud:  # operador: ligar so pra conferir (aparece pro publico tb)
                 _draw_hud(disp, partida)
