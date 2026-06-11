@@ -392,7 +392,11 @@ O áudio **não** está versionado no git (são ~384 MB):
   `b_glitch.py` + `b_synth.scd`.
 - **Timbres** — afinar o vibrafone (`\baralhoVibeKlank`) e, se valer, detalhar
   técnicas estendidas (sul pont/tasto, pizz, jeté, flautando…) como variações de
-  parâmetro — tudo dentro do `a_synth.scd`, com o ouvido do Victor.
+  parâmetro — tudo dentro do `a_synth.scd`, com o ouvido do Victor. Há um
+  **banco de sonoridades pra audicionar** em [`a_banco.scd`](a_banco.scd): rode-o
+  **depois** do `a_synth.scd` e use `~bancoLista.()`, `~tocar.(\arco)`,
+  `~bancoTodos.()` pra ouvir e comparar 11 cores (as 3 bases + arco, sul
+  tasto/ponticello, pizz, sino, motor lento/rápido, gongo) e decidir o que adotar.
 - **Multijogador** — contabilizar de quem é a carta (2–4 jogadores) e, talvez,
   espacializar por jogador.
 - **Espaço físico** — octofonia (hoje é estéreo; o `b_synth.scd` já marca o TODO
