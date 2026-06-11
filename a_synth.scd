@@ -2,6 +2,34 @@
 // BARALHO MUSICAL - RECEPTOR OSC + SYNTH (SuperCollider)
 // =====================================================================
 //
+// ---------------------------------------------------------------------
+// LEIA ISTO PRIMEIRO (pra quem nunca viu codigo)
+// ---------------------------------------------------------------------
+// ATENCAO: este arquivo NAO e Python! E "SuperCollider", uma linguagem
+// feita pra FAZER SOM. Os arquivos .py sao o "cerebro" (decidem o que
+// tocar); os .scd sao os "alto-falantes" (produzem o barulho de verdade).
+// Este aqui e a CAMA: o vibrafone que cada carta toca. Voce roda este
+// arquivo DENTRO do programa SuperCollider (Ctrl+A pra selecionar tudo,
+// Ctrl+Enter pra executar), nao no terminal.
+//
+// Tres palavrinhas que se repetem e voce so precisa reconhecer:
+//   * SynthDef(\nome, { ... }) = a RECEITA de um som (como soa o vibrafone,
+//       o eco, o reverb...). E so a planta; nao toca sozinha.
+//   * OSCdef(\nome, { ... }, "/baralho/x") = um "ouvido": espera a mensagem
+//       OSC "/baralho/x" que o Python manda e, quando ela chega, dispara a
+//       receita. E a ponte Python -> som.
+//   * ~algumaCoisa = uma "caixa com nome" global (variavel);
+//       \algumaCoisa (com barra) = so um nome/etiqueta (rotulo de texto).
+//   * // assim e um comentario (o computador ignora), igual ao # do Python.
+//
+// Resumo: o Python (a_cama.py) grita "/baralho/note" pela rede a cada carta;
+// o "ouvido" OSCdef aqui escuta e dispara a SynthDef que faz a badalada soar.
+// Os comentarios numerados (1, 2, 3...) abaixo guiam cada bloco em portugues.
+// (Os detalhes finos de SINTESE -- oscilador, envelope, filtro, reverb -- nao
+//  sao explicados linha a linha de proposito: e um mundo a parte. Aqui fica a
+//  ideia geral de cada bloco, que e o que importa pra entender a peca.)
+// ---------------------------------------------------------------------
+//
 // Como usar:
 //   1. Abra este arquivo no SuperCollider (sclang/IDE).
 //   2. Selecione TUDO (Ctrl+A) e aperte Ctrl+Enter pra rodar de uma vez.

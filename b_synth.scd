@@ -1,6 +1,32 @@
 // =====================================================================
 // B_SYNTH.scd  -  CAMADA B (o mundo / a cartomante ao vivo)
 //
+// ---------------------------------------------------------------------
+// LEIA ISTO PRIMEIRO (pra quem nunca viu codigo)
+// ---------------------------------------------------------------------
+// ATENCAO: este arquivo NAO e Python! E "SuperCollider", uma linguagem
+// feita pra FAZER SOM. Enquanto os arquivos .py sao o "cerebro" (decidem
+// o que tocar), os .scd sao os "alto-falantes" (produzem o barulho de
+// verdade). Voce roda este arquivo DENTRO do programa SuperCollider
+// (selecionar tudo e apertar Ctrl+Enter), nao no terminal.
+//
+// Tres palavrinhas que se repetem aqui e voce so precisa reconhecer:
+//   * SynthDef(\nome, { ... })  = a RECEITA de um som (ex: como soa o
+//       habitat, como soa a distorcao). E so a planta; nao toca sozinha.
+//   * OSCdef(\nome, { ... }, "/mundo/x") = um "ouvido": fica esperando a
+//       mensagem OSC "/mundo/x" que o Python manda, e quando ela chega,
+//       executa a receita. E a ponte Python -> som.
+//   * Os simbolos: ~algumaCoisa = uma "caixa com nome" global (variavel);
+//       \algumaCoisa (com barra) = so um nome/etiqueta (um rotulo de texto).
+//   * // assim e um comentario (o computador ignora), igual ao # do Python.
+//
+// Resumo: o Python grita "/mundo/glitch" pela rede; o "ouvido" OSCdef aqui
+// embaixo escuta e dispara a receita SynthDef que faz a sujeira soar. Os
+// comentarios de cada bloco abaixo dizem, em portugues, o que cada som faz.
+// (Os detalhes de SINTESE -- envelope, buffer, filtro -- nao sao explicados
+//  linha a linha de proposito: e um mundo a parte; aqui fica a ideia geral.)
+// ---------------------------------------------------------------------
+//
 // ADITIVO. NAO TOCA em a_synth.scd. Rode ESTE arquivo DEPOIS de
 // a_synth.scd (Ctrl+A, Ctrl+Enter), com o servidor ja booted.
 // Usa o namespace OSC /mundo/* (separado de /baralho/*), entao convive
