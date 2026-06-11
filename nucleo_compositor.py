@@ -2,6 +2,34 @@
 SISTEMA BARALHO MUSICAL
 Transforma cartas de baralho em parametros musicais.
 
+====================================================================
+LEIA ISTO PRIMEIRO (pra quem nunca viu codigo)
+====================================================================
+*** Nunca programou? Abra antes o PYTHON_DO_ZERO.md. E este e o arquivo MAIS
+*** AVANCADO e mais matematico do projeto -- de boa se ele parecer dificil.
+*** Voce NAO precisa entender tudo aqui pra entender a peca: pense neste
+*** arquivo como uma "maquina de traducao" que pega uma carta e cospe numeros
+*** que viram musica. Os outros arquivos so usam o resultado.
+
+A ideia central, em palavras simples:
+  - Cada carta tem um VALOR (As=1, ..., 10=10) e um NAIPE (Copas/Ouros/Espadas/Paus).
+  - O NAIPE diz qual CONTA fazer entre o valor da carta e o "resultado anterior":
+        Copas  -> somar         Ouros   -> subtrair
+        Paus   -> gcd (*)       Espadas -> lcm (*)
+    (*) gcd = "maior divisor comum"; lcm = "menor multiplo comum". Sao duas
+        contas classicas de matematica de escola. Nao precisa dominar: o codigo
+        faz a conta; aqui elas servem so pra gerar numeros com "personalidade".
+  - O numero que sai da conta vira um PARAMETRO musical (que nota tocar, quao
+    forte, qual andamento, etc.), consultando umas TABELAS de-para mais abaixo.
+  - Como as contas podem dar numeros enormes, existe um truque chamado "fold"
+    (dobra) que traz o numero de volta pra uma faixinha musical [-10, +10],
+    como uma corda batendo na parede e voltando (ver a funcao fold_range).
+  - As figuras J, Q, K nao tem valor proprio: viram "tempo" (passado/presente/
+    futuro). O codigo explica cada uma onde elas aparecem (process_card).
+
+Resumo pro leigo: cartas entram, contas acontecem, numeros saem, numeros viram
+musica. O detalhe tecnico abaixo e pra quem quiser MESMO mergulhar -- pode pular.
+
 FLUXO:
 1. Embaralha o baralho (52 cartas)
 2. Evento inicial = 0
@@ -55,12 +83,12 @@ PARAMETROS (por ordem das 7 cartas):
   7. OITAVA: 1(-4) a 7(+4), oitava 4(0) = centro
 """
 
-import math
-import random
-import sys
-from typing import List, Tuple, Optional, Dict, Any
-from dataclasses import dataclass
-from enum import Enum
+import math    # contas (aqui: gcd = maior divisor comum)
+import random  # embaralhar/sortear
+import sys      # ajustes do sistema (encoding do terminal)
+from typing import List, Tuple, Optional, Dict, Any  # rotulos de tipo (so documentam)
+from dataclasses import dataclass  # um atalho pra criar "fichas" de dados (ver Card/Note)
+from enum import Enum  # cria uma LISTA FIXA de opcoes com nome (ver Suit, os 4 naipes)
 
 # Fix terminal encoding for Windows
 if sys.stdout.encoding != 'utf-8':
@@ -76,6 +104,9 @@ if sys.stdout.encoding != 'utf-8':
 # CONSTANTES E CONFIGURACOES
 # =============================================================================
 
+# Um "Enum" e uma lista fixa de opcoes nomeadas. Aqui, os 4 naipes. Em vez de
+# espalhar o texto "PAUS" pelo codigo (e arriscar erro de digitacao), usa-se
+# Suit.PAUS -- mais seguro e mais legivel.
 class Suit(Enum):
     PAUS = 'PAUS'
     OUROS = 'OUROS'
@@ -204,11 +235,15 @@ def nearest_value(mapping: Dict[int, Any], event_value: int) -> Tuple[int, Any]:
     Retorna (key, display_name).
     Em caso de empate, prefere a chave mais proxima do zero (centro musical).
     """
-    keys = sorted(mapping.keys())
+    keys = sorted(mapping.keys())  # as posicoes da tabela, em ordem
 
-    if event_value in mapping:
-        return event_value, mapping[event_value]
+    if event_value in mapping:                 # se o valor existe exatinho na tabela...
+        return event_value, mapping[event_value]  # ...devolve ele direto
 
+    # senao, acha a posicao MAIS PERTO. O "key=lambda k: ..." e uma mini-funcao
+    # anonima (sem nome) que diz ao min() COMO comparar: primeiro pela distancia
+    # ate o valor procurado (abs = valor absoluto, "tira o sinal"), e em caso de
+    # empate, pela proximidade do zero (o centro musical). abs(3 - 5) = 2.
     best_key = min(keys, key=lambda k: (abs(k - event_value), abs(k)))
     return best_key, mapping[best_key]
 
@@ -260,8 +295,8 @@ def signed_gcd(a: int, b: int) -> int:
     """
     if a == 0:
         return 0
-    g = math.gcd(abs(a), abs(b))
-    return -g if a < 0 else g
+    g = math.gcd(abs(a), abs(b))  # gcd sempre da positivo; usamos os valores sem sinal
+    return -g if a < 0 else g     # depois devolvemos o sinal do 'a' (a "direcao" da carta)
 
 
 def signed_lcm(a: int, b: int) -> int:
@@ -274,9 +309,10 @@ def signed_lcm(a: int, b: int) -> int:
     """
     if a == 0 or b == 0:
         return 0
+    # formula classica: lcm(a,b) = |a|*|b| / gcd(a,b). "//" e divisao inteira.
     g = math.gcd(abs(a), abs(b))
     l = abs(a) * abs(b) // g
-    return -l if a < 0 else l
+    return -l if a < 0 else l  # de novo, devolve o sinal do 'a'
 
 
 def suit_operation(suit: Suit, current_value: int, modified_previous: int) -> int:
@@ -316,13 +352,15 @@ def fold_range(x: int, lo: int = -10, hi: int = 10) -> int:
     Diferente do modulo (que envelopa circular: 18 -> -3), o fold mantem
     a polaridade: valores positivos grandes viram positivos pequenos.
     """
-    if lo <= x <= hi:
+    # imagine uma corda esticada entre 'lo' e 'hi'. Se o numero passa do limite,
+    # ele "rebate" pra dentro, como uma bolinha quicando entre duas paredes.
+    if lo <= x <= hi:        # ja esta dentro? entao nem mexe.
         return x
     span = hi - lo            # ex: 20
-    period = 2 * span         # ex: 40
-    shifted = (x - lo) % period
-    if shifted > span:
-        shifted = period - shifted
+    period = 2 * span         # ex: 40 (ir ate a parede e voltar)
+    shifted = (x - lo) % period  # "%" = resto da divisao; traz pra dentro de um ciclo
+    if shifted > span:           # se passou da metade do ciclo, esta "voltando"...
+        shifted = period - shifted  # ...entao reflete (rebate na parede)
     return lo + shifted
 
 
@@ -516,6 +554,9 @@ def apply_param_mirror(param: Dict[str, Any], mapped_key: int) -> Tuple[int, Any
 # CLASSES PRINCIPAIS
 # =============================================================================
 
+# "@dataclass" e um atalho: ele transforma a classe numa "ficha" de dados. A
+# gente so lista quais campos a ficha tem (type e suit) e o Python ja cria a
+# montagem automatica. Card(type='Q', suit=Suit.COPAS) = a ficha da Dama de Copas.
 @dataclass
 class Card:
     """Representa uma carta de baralho."""
@@ -610,6 +651,8 @@ class Baralho:
     
     def _build(self):
         """Constroi o baralho com 52 cartas."""
+        # dois "for" um dentro do outro: pra cada naipe, pra cada valor, cria a
+        # carta e .append() a poe no fim da lista. 4 naipes x 13 valores = 52.
         for suit in Suit:
             for card_type in CARD_TYPES:
                 self.cards.append(Card(type=card_type, suit=suit))
@@ -681,8 +724,14 @@ class InterpretadorEventos:
         """
         suit = card.suit
 
+        # Esta funcao e o CORACAO da matematica. Em 4 passos: (1) decide qual numero
+        # a carta "vale" agora -- so que J/Q/K nao tem valor proprio, eles viram
+        # passado/presente/futuro; (2) anota a carta na memoria; (3) faz a conta do
+        # naipe com o resultado anterior e dobra de volta pra faixa musical; (4)
+        # guarda no historico e devolve o resultado. Leia bloco a bloco abaixo.
+
         # 1. Determinar current_value conforme tempo (J/Q/K) ou valor proprio
-        if card.type == 'J':
+        if card.type == 'J':  # VALETE = passado: herda o valor da carta anterior
             action_label = 'passado'
             prev = self.previous_card
             if prev is None or prev.is_action():
@@ -691,11 +740,11 @@ class InterpretadorEventos:
             else:
                 current_value = get_card_numeric_value(prev.type, prev.suit)
                 valor_origem = f"valor da carta anterior ({prev.type}/{SUIT_INFO[prev.suit]['symbol']})"
-        elif card.type == 'Q':
+        elif card.type == 'Q':  # DAMA = presente: nao tem valor (usa a "identidade")
             action_label = 'presente'
             current_value = SUIT_IDENTITY[suit]
             valor_origem = f"identidade de {SUIT_INFO[suit]['symbol']} (presente, sem valor)"
-        elif card.type == 'K':
+        elif card.type == 'K':  # REI = futuro: espia a PROXIMA carta (next_card)
             action_label = 'futuro'
             if next_card is None or next_card.is_action():
                 current_value = SUIT_IDENTITY[suit]
@@ -715,14 +764,17 @@ class InterpretadorEventos:
             self.previous_card_value = current_value
 
         # 3. Aplicar a operacao do naipe entre current_value e E_anterior (intacto)
+        # "event_history[-1]" = o ultimo resultado guardado (o [-1] pega o ultimo
+        # item de uma lista). e_anterior e o "resultado anterior" com que a conta
+        # do naipe vai operar.
         e_anterior = self.event_history[-1] if self.event_history else 0
         # suit_operation ja retorna inteiro (divisao e truncada).
         # Aplicar fold em [-10, +10] para manter o evento dentro do range musical:
         # multiplicacao/soma podem explodir, mas a corda "dobra" de volta.
-        raw = suit_operation(suit, current_value, e_anterior)
-        event_value = fold_range(raw, -10, 10)
+        raw = suit_operation(suit, current_value, e_anterior)  # a conta do naipe
+        event_value = fold_range(raw, -10, 10)                 # traz pra faixa musical
 
-        # 4. Guardar no historico
+        # 4. Guardar no historico (pra proxima carta usar como "anterior")
         self.event_history.append(event_value)
 
         return ProcessResult(
@@ -792,11 +844,13 @@ class Compositor:
         tie_backward = False
         tie_forward = False
 
+        # cada NOTA usa ate 7 cartas, uma por botao/parametro (a menos que um As
+        # apareca e encerre a nota antes). Este for vai do parametro 0 ao 6.
         for param_idx in range(7):
             param = PARAMETERS[param_idx]
             # Garante carta disponivel (reabastece se preciso)
             self._ensure_cards(1, verbose=verbose)
-            card = self.baralho.draw()
+            card = self.baralho.draw()  # compra a proxima carta do topo
             if card is None:
                 if verbose:
                     print(f"[ERRO] Acabaram as cartas!")
@@ -936,9 +990,11 @@ class Compositor:
             print()
 
         current_bpm = initial_bpm
-        accumulated_seconds = 0.0
-        note_idx = 0
+        accumulated_seconds = 0.0  # quanto tempo de musica ja foi gerado
+        note_idx = 0               # quantas notas ja foram geradas
 
+        # gera nota apos nota ate atingir o alvo: ou um tempo total (target_seconds)
+        # ou um numero de notas (num_notes). O "break" sai do laco quando chega la.
         while True:
             if target_seconds is not None:
                 if accumulated_seconds >= target_seconds:
