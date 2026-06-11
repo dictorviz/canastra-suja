@@ -119,6 +119,14 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
 
 ## Arquivos — coisa por coisa
 
+> **Nunca programou?** Cada arquivo `.py` e `.scd` está comentado **linha a linha,
+> pra leigo** (um "professor pra quem nunca viu código"), e há um guia-alicerce
+> em [`PYTHON_DO_ZERO.md`](PYTHON_DO_ZERO.md) que ensina o básico do zero
+> (variável, lista, dicionário, função, classe…). Ordem sugerida de leitura:
+> `b_buraco → b_samples → b_teclado → b_aruco → a_cama → b_partida → a_osc →
+> nucleo_compositor → main`. Os `.scd` (SuperCollider) trazem um "LEIA PRIMEIRO"
+> explicando que são o lado do **som**.
+
 ### Ponto de entrada
 
 - **`main.py`** — o menu da peça (`python main.py`). Duas opções, as duas
@@ -336,6 +344,10 @@ arquivo/
    - `a_synth.scd` — a **cama** (o vibrafone). Aguarde `[BARALHO] Pronto.`.
    - `b_synth.scd` — o **mundo** (habitats + degradação). Aguarde
      `[MUNDO] Pronto.`.
+   - *(opcional)* `a_banco.scd` — a **vitrine de timbres** pra audicionar e
+     comparar sonoridades do vibrafone (`~bancoLista.()`, `~tocar.(\arco)`,
+     `~bancoTodos.()`). Não entra na peça; é só laboratório. Rode **depois** do
+     `a_synth.scd`.
 2. No terminal: `python main.py`
 3. Escolha o modo e responda **jogadores (2–4)** + **seed**. Nada toca até a
    primeira carta — **os jogadores tocam a peça**:

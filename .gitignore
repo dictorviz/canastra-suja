@@ -33,6 +33,13 @@ __pycache__/
 venv/
 env/
 
+# --- Editores / IDEs (config local de cada maquina, nao do projeto) ---
+.vscode/
+.idea/
+*.sublime-workspace
+# arquivos de backup que editores deixam (inclusive do SuperCollider)
+*~
+
 # --- Local / ferramentas / SO ---
 .claude/settings.local.json
 .DS_Store
