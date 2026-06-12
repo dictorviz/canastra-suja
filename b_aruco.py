@@ -269,11 +269,54 @@ def _degradar(frame, level: float, kicks=None):
     return out
 
 
+def _try_open(index: int, backend):
+    # tenta abrir UM indice com UM backend e CONFIRMA com uma leitura real.
+    # No Windows o DSHOW as vezes diz isOpened()=True mas nao entrega quadro;
+    # so confiamos se um cap.read() de fato vier com imagem.
+    cap = cv2.VideoCapture(index, backend) if backend is not None \
+        else cv2.VideoCapture(index)
+    if not cap.isOpened():
+        cap.release()
+        return None
+    # PEDE 720p (1280x720). Quanto mais pixels, mais LONGE o marcador ainda e
+    # "lido": a 480p as distancias de deteccao caem pela METADE. So um PEDIDO --
+    # se a webcam nao tiver 720p ela entrega a resolucao dela mesmo, sem quebrar.
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    ok, frame = False, None
+    for _ in range(8):  # da uns quadros de "esquenta" pra camera acordar
+        ok, frame = cap.read()
+        if ok and frame is not None:
+            return cap
+    cap.release()  # abriu mas nao entregou imagem -> trata como falha
+    return None
+
+
 def _open_camera(index: int):
-    # No Windows, CAP_DSHOW abre mais rapido e evita o backend MSMF travar.
-    if sys.platform.startswith("win"):  # se o sistema e Windows...
-        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    return cv2.VideoCapture(index)
+    """Abre a camera de forma resiliente: tenta o indice pedido em varios
+    backends e, se falhar, varre os outros indices (0..3). Devolve (cap, idx_real)
+    ou (None, -1) se nada funcionou.
+
+    Por que: no Windows o indice 0 nem sempre e a webcam (pode ser camera virtual
+    ou sensor), e um backend so as vezes nao abre o dispositivo certo. Tentar
+    DSHOW -> MSMF -> ANY e varrer indices acha a HP sozinho."""
+    # ordem de backends: no Windows DSHOW costuma abrir mais rapido; MSMF e o
+    # nativo moderno; ANY deixa o OpenCV escolher. Fora do Windows, so o padrao.
+    if sys.platform.startswith("win"):
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+    else:
+        backends = [None]
+
+    # primeiro tudo no indice pedido; depois os indices 0..3 (sem repetir o pedido)
+    indices = [index] + [i for i in range(4) if i != index]
+    for idx in indices:
+        for backend in backends:
+            cap = _try_open(idx, backend)
+            if cap is not None:
+                if idx != index:
+                    print(f"[i] camera {index} nao respondeu; usando a camera {idx}.")
+                return cap, idx
+    return None, -1
 
 
 def _set_fullscreen(win, on):
@@ -319,10 +362,16 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     params = aruco.DetectorParameters()
     detector = aruco.ArucoDetector(dic, params)
 
-    cap = _open_camera(camera_index)  # abre a webcam
-    if cap is None or not cap.isOpened():
-        print(f"[!] nao consegui abrir a camera {camera_index}. "
-              f"Tente outro indice (0,1,2...) ou cheque a webcam.")
+    cap, camera_index = _open_camera(camera_index)  # abre a webcam (com fallback)
+    if cap is None:
+        print(f"[!] nao consegui abrir nenhuma camera (tentei indices 0..3 em "
+              f"DSHOW/MSMF/ANY).")
+        print("    Causas comuns:")
+        print("      - outro app esta usando a webcam (Teams, Zoom, navegador,")
+        print("        app Camera do Windows, OBS, utilitario HP) -> feche-os;")
+        print("      - permissao da camera desligada (Config. > Privacidade >")
+        print("        Camera > 'Permitir que aplicativos da area de trabalho...');")
+        print("      - a webcam HP esta desconectada ou com driver com problema.")
         return
 
     win = "CANASTRA SUJA"
@@ -335,7 +384,13 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     active = {}  # id -> quadros consecutivos sumido (presente=ja disparou)
     prev_disp = None  # ultimo quadro projetado (pro stutter da degradacao)
 
-    print("\n[OK] webcam no ar. Vire as cartas na frente da camera.")
+    # mostra a resolucao que a webcam REALMENTE entregou (pode nao ser 720p).
+    cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"\n[OK] webcam no ar a {cam_w}x{cam_h}. Vire as cartas na frente da camera.")
+    if cam_w < 1280:
+        print("     (abaixo de 720p -> marcadores precisam estar MAIS PERTO; "
+              "use marcadores maiores se possivel.)")
     print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao\n")
 
     # "try/finally": faca o laco; aconteca o que acontecer (saida normal ou erro),
