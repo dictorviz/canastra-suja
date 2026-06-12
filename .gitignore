@@ -22,6 +22,8 @@ tts_cache/
 sessoes/
 # marcadores/     = PNGs dos marcadores ArUco (gere com: python b_aruco.py gerar)
 marcadores/
+# marcadores_a4_*.pdf = folhas A4 prontas pra grafica (gere com: python b_imprimir.py)
+marcadores_a4_*.pdf
 # composicao*.txt = partituras-texto exportadas (nucleo_compositor)
 composicao*.txt
 __pycache__/
