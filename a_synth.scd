@@ -47,11 +47,34 @@
 
 
 // ---------------------------------------------------------------------
-// 1. Inicia o servidor de audio
+// 1. Inicia o servidor de audio  (+ DEBUG / OCTOFONIA, pedidos 7 e 2)
+//
+// ~debug = true  -> LABORATORIO (seu laptop): som em ESTEREO (2 caixas).
+// ~debug = false -> CONSERVATORIO: som em OCTOFONIA (8 Genelecs, PanAz num anel).
+//
+// IMPORTANTE: mantenha este ~debug IGUAL ao DEBUG do b_config.py e ao ~debug
+// do b_synth.scd (sao tres programas separados; o ajuste e na mao, nos tres).
+// Trocar o numero de canais so vale DEPOIS de rebootar o servidor: Ctrl+. e
+// rode o arquivo de novo (ou execute s.reboot), pois numOutputBusChannels so
+// e lido no boot.
 // ---------------------------------------------------------------------
 (
+~debug  = true;
+~nChans = if(~debug, { 2 }, { 8 });
+Server.default.options.numOutputBusChannels = ~nChans;
+
+// ESPALHAR um sinal (mono/estereo) pelas caixas. Em estereo passa DIRETO
+// (identico ao de antes); em octofonia distribui pelo anel de 8 via SplayAz.
+// Usado nas vozes da cama e nas saidas de reverb -- assim a cama preenche as 8
+// caixas em vez de sair so em 2. (A posicao precisa por azimute fica pro lado B,
+// o theremin; aqui na cama um espalhamento difuso ja basta.)
+~spread = { |sig|
+    if(~nChans == 2, { sig }, { SplayAz.ar(~nChans, sig.asArray) });
+};
+
 s.waitForBoot({
-    "[BARALHO] Servidor de audio iniciado.".postln;
+    "[BARALHO] Servidor de audio iniciado ("
+        ++ ~nChans ++ " canais, debug=" ++ ~debug ++ ").".postln;
 
     // -----------------------------------------------------------------
     // 2. SynthDef principal - som suave de "cordas+sopro" microtonal
@@ -92,7 +115,7 @@ s.waitForBoot({
         sig = Pan2.ar(sig * env * amp, pan);
 
         // Dry direto pro master + sends pros 3 buses de reverb
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -151,7 +174,7 @@ s.waitForBoot({
         sig = Pan2.ar(sig * env * amp * 0.35, pan);
 
         // Dry direto pro master + sends pros 3 buses de reverb
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -209,7 +232,7 @@ s.waitForBoot({
         sig = Pan2.ar(sig * env * amp * 0.4, pan);
 
         // Dry direto pro master + sends pros 3 buses de reverb
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -254,7 +277,7 @@ s.waitForBoot({
         sig = Pan2.ar(sig * env * amp, pan);
 
         // Dry direto + sends pros reverbs (ecos seguem a nota original)
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -311,7 +334,7 @@ s.waitForBoot({
         sig = sig * masterEnv;
 
         sig = Pan2.ar(sig, pan);
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -336,7 +359,7 @@ s.waitForBoot({
         sig = DelayC.ar(sig, 0.06, SinOsc.kr(0.4).range(0.005, 0.055));
         sig = HPF.ar(sig, 300);    // spring nao tem grave
         sig = LPF.ar(sig, 3500);   // metalico mas nao agressivo
-        Out.ar(0, sig * mix * 0.55);
+        Out.ar(0, ~spread.(sig * mix * 0.55));
     }).add;
 
     // -----------------------------------------------------------------
@@ -354,7 +377,7 @@ s.waitForBoot({
             inputbw: 0.5, spread: 25,
             drylevel: 0, earlyreflevel: 0.4, taillevel: 0.6,
             maxroomsize: 100);
-        Out.ar(0, sig * mix * 0.35);
+        Out.ar(0, ~spread.(sig * mix * 0.35));
     }).add;
 
     // -----------------------------------------------------------------
@@ -368,7 +391,7 @@ s.waitForBoot({
         in = In.ar(inBus, 2);
         sig = FreeVerb2.ar(in[0], in[1], mix: 1.0, room: 0.85, damp: 0.2);
         sig = HPF.ar(sig, 180);
-        Out.ar(0, sig * mix * 0.5);
+        Out.ar(0, ~spread.(sig * mix * 0.5));
     }).add;
 
     s.sync;
@@ -485,7 +508,7 @@ s.waitForBoot({
         sig = sig * env * gain * 0.55;   // gain global da voz (fantasma legivel)
         sig = Pan2.ar(sig, pan);
 
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -658,7 +681,7 @@ s.waitForBoot({
         sig = sig * env * amp;
         sig = Pan2.ar(sig, pan);
 
-        Out.ar(0, sig);
+        Out.ar(0, ~spread.(sig));
         Out.ar(revBusSpring, sig * sendSpring);
         Out.ar(revBusHall,   sig * sendHall);
         Out.ar(revBusPlate,  sig * sendPlate);
@@ -1003,6 +1026,46 @@ s.waitForBoot({
         ~ttsBuffers = Dictionary.new;
         "[BARALHO] buffers TTS limpos.".postln;
     }, "/baralho/fala_clear");
+
+    // -----------------------------------------------------------------
+    // MASTER LIMITER (pedido 6: nada de estourar -- controle de dB/RMS)
+    //
+    // TUDO (cama + mundo + glitch + theremin) se soma no bus 0. Este synth le
+    // essa soma, passa por um Limiter (teto rigido em 0.95) e DEVOLVE no lugar
+    // (ReplaceOut). Ele mora num grupo que roda DEPOIS de todas as vozes, entao
+    // sempre pega o mix final -- mesmo os glitches que nascem em runtime. E a
+    // "rede de seguranca" contra os picos que estouravam.
+    //
+    // Em DEBUG ele ainda posta o pico em dBFS quando chega perto do teto, pra
+    // voce ENXERGAR se algo esta quase clipando (o "controle de dB e RMS").
+    // -----------------------------------------------------------------
+    SynthDef(\masterLimiter, { |amp=1.0|
+        var sig = In.ar(0, ~nChans);
+        sig = sig * amp;
+        sig = Limiter.ar(sig, 0.95, 0.01);        // teto anti-clip (lookahead 10ms)
+        SendPeakRMS.kr(sig, 4, 3, "/masterRMS");  // 4x/s -> metering em debug
+        ReplaceOut.ar(0, sig);
+    }).add;
+    s.sync;
+    if(~masterGrp.notNil) { ~masterGrp.free };    // re-exec nao empilha limiters
+    ~masterGrp = Group.after(s.defaultGroup);     // grupo DEPOIS de tudo
+    ~master = Synth(\masterLimiter, target: ~masterGrp);
+    ("[BARALHO] Master limiter ativo (teto 0.95, " ++ ~nChans ++ " canais).").postln;
+
+    // Metering de pico -- SO no laboratorio (debug). Em apresentacao fica quieto.
+    if(~debug, {
+        OSCdef(\masterMeter, { |msg|
+            // msg = [/masterRMS, nodeID, replyID, peak0, rms0, peak1, rms1, ...]
+            var peaks = (3, 5 .. (msg.size - 1)).collect({ |i| (msg[i] ? 0).asFloat });
+            var pk = peaks.maxItem ? 0.0;
+            if(pk.ampdb > -1.0) {
+                ("[MASTER] pico " ++ pk.ampdb.round(0.1)
+                    ++ " dBFS  <<< perto do teto (o limiter esta segurando)").postln;
+            };
+        }, "/masterRMS");
+    }, {
+        OSCdef(\masterMeter).free;  // garante silencio do metering fora do debug
+    });
 
     "[BARALHO] Pronto. Aguardando OSC em porta 57120.".postln;
     "[BARALHO] Pra parar tudo: Ctrl+. (Ctrl+ponto)".postln;

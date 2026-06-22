@@ -8,16 +8,18 @@ LEIA ISTO PRIMEIRO (pra quem nunca viu codigo)
 
 Em uma frase: este arquivo deixa voce JOGAR a peca DIGITANDO as cartas no
 teclado, em vez de mostrar cartas pra uma camera. Voce digita "QC" (Dama de
-Copas), aperta ENTER, e a carta "acontece": toca a cama (vibrafone), atravessa
-um habitat e suja um pouco o som. E o jeito de ensaiar a peca SEM precisar de
-camera nem de marcadores impressos.
+Copas), aperta ENTER, e a carta "acontece": atravessa um habitat e suja um pouco
+o som (glitch). E o jeito de ensaiar a peca SEM precisar de camera nem de
+marcadores impressos. (Sem theremin: ele precisa da pose da camera.)
 
 Quando a webcam (b_aruco.py) entra em cena, ela faz o MESMO papel deste arquivo
--- so muda DE ONDE vem a carta (camera no lugar do teclado). O resto da peca
-nao muda nada. Os dois "falam a mesma lingua": uma carta = (valor, naipe).
+-- so muda DE ONDE vem a carta (camera no lugar do teclado) e ACRESCENTA o
+theremin (a pose). O resto da peca nao muda. Os dois "falam a mesma lingua":
+uma carta = (valor, naipe).
 
 PRE-REQUISITOS:
-    1. SuperCollider com a_synth.scd (cama) + b_synth.scd (mundo) rodando.
+    1. SuperCollider com a_synth.scd (servidor + limiter) + b_synth.scd (mundo)
+       rodando. (A cama/vibrafone do a_synth fica dormente -- nao soa na peca.)
     2. python b_teclado.py
 
 COMO DIGITAR UMA CARTA:
@@ -123,18 +125,19 @@ def run_partida(num_jogadores, seed):
     """Roda a partida (camada B): a vez gira entre os jogadores e cada carta
     lancada atravessa um habitat (b_samples) + soma degradacao (b_glitch).
 
-    Separado do main() pra ser reutilizavel -- a cama generativa (main.py
-    opt_jogar) e, no futuro, o ArUco chamam esta funcao direto, sem reprompt.
+    Separado do main() pra ser reutilizavel -- o main.py (opt_jogar) e o ArUco
+    chamam esta funcao direto, sem reprompt.
     """
     # importa AQUI dentro (e nao la em cima) so quando a funcao roda. Cria o
-    # objeto Partida, que junta tudo (mesa + cama + mundo + glitch) num lugar so.
+    # objeto Partida, que junta tudo (mesa + mundo + glitch + theremin; a cama
+    # esta instanciada mas dormente) num lugar so.
     from b_partida import Partida
     partida = Partida(num_jogadores, seed, verbose=True)
     print()
     print("  " + partida.mesa.resumo())  # mostra quem joga
     print_help()                          # mostra o manual
-    # Canastra Suja NAO usa voz/palavras. Cada carta TOCA a cama (vibrafone ao
-    # vivo, a_synth) + atravessa um habitat + suja (b_synth). Sem carta, sem som.
+    # Canastra Suja NAO usa voz/palavras. Cada carta atravessa um habitat + suja
+    # (b_synth). Sem carta, sem som. (A cama/vibrafone do a_synth esta dormente.)
     partida.preload()  # carrega os habitats no SuperCollider
     print("\n[OK] mesa pronta. Cada jogador, na sua vez, lanca uma carta.\n")
 
@@ -183,14 +186,14 @@ def run_partida(num_jogadores, seed):
 
 
 def main():
-    """Modo standalone (python b_teclado.py): so as cartas, SEM a cama
-    generativa. Pergunta jogadores + seed e roda a partida. Pra peca completa
-    (cama + cartas), use main.py opcao [1]."""
+    """Modo standalone (python b_teclado.py): joga por teclado. Pergunta
+    jogadores + seed e roda a partida -- o mesmo que main.py opcao [1]
+    (a diferenca da webcam e so o theremin, que precisa da camera)."""
     print("=" * 60)
     print("CANASTRA SUJA - jogar por teclado (simula a webcam/ArUco)")
     print("=" * 60)
-    print("Pre-requisito: SC com a_synth.scd (cama) + b_synth.scd (mundo) rodando.")
-    print("Cada carta toca o vibrafone ao vivo + atravessa um habitat + suja.")
+    print("Pre-requisito: SC com a_synth.scd (servidor+limiter) + b_synth.scd (mundo).")
+    print("Cada carta atravessa um habitat + suja o som (a cama/vibrafone esta dormente).")
     print()
     num_jogadores = ask_num_jogadores()  # pergunta quantos jogam
     seed = ask_seed()                    # pergunta a semente

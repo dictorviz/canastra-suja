@@ -259,8 +259,11 @@ que **não atrapalha** quando ele é usado como peça da máquina maior.
 
 ## 7. Como esse projeto está organizado (mapa rápido)
 
-- Arquivos que começam com **`a_`** = a **CAMA** (o vibrafone, a camada A).
-- Arquivos que começam com **`b_`** = o **MUNDO** (os habitats e a sujeira, camada B).
+- Arquivos que começam com **`a_`** = a **CAMA** (o vibrafone, a camada A) —
+  hoje **dormente** (saiu da peça ao vivo; só roda nos demos). O `a_synth.scd`
+  ainda é preciso pra bootar o servidor de áudio + o limiter.
+- Arquivos que começam com **`b_`** = o **MUNDO** (os habitats, a sujeira e o
+  theremin, camada B) — é o que toca na peça ao vivo.
 - **`.py`** = receitas em Python (o "cérebro" — decide o que tocar).
 - **`.scd`** = receitas em SuperCollider (os "alto-falantes" — fazem o som de verdade).
 - **`main.py`** = a porta de entrada: o menu que você roda primeiro.

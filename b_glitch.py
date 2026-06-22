@@ -64,18 +64,20 @@ from pythonosc import udp_client
 #   RANKS      = a lista dos valores das cartas, em ordem (A, 2, 3, ... K)
 #   SUIT_NAMES = uma tabela que traduz a sigla do naipe ("C") pro nome ("Copas")
 from b_samples import RANKS, SUIT_NAMES
+# o painel de ajustes unico (DEBUG, rede OSC, taxa do fluxo continuo).
+import b_config
 
 # =============================================================================
 # CONFIG = os "numeros que dao pra ajustar". Ficam no topo, com nome em MAIUSCULA,
 # pra ser facil achar e mudar sem ter que cacar no meio do codigo.
 # =============================================================================
 
-DEFAULT_HOST = "127.0.0.1"  # "127.0.0.1" quer dizer "este mesmo computador".
-                            # E o endereco de casa pra onde mandamos o OSC.
-DEFAULT_PORT = 57120  # a "porta" e como o numero do apartamento no predio: o
-                      # SuperCollider fica escutando nesta porta. A camada A e a
-                      # B usam a MESMA porta, mas enderecos diferentes (/baralho/*
-                      # e /mundo/*), entao nao se atrapalham.
+# vem do painel unico b_config (mesma rede pra peca inteira). "127.0.0.1" quer
+# dizer "este mesmo computador"; a porta 57120 e onde o SuperCollider escuta (as
+# camadas A e B usam a MESMA porta, mas enderecos diferentes -- /baralho/* e
+# /mundo/* -- entao nao se atrapalham).
+DEFAULT_HOST = b_config.HOST
+DEFAULT_PORT = b_config.PORT
 
 # os.path.abspath(__file__) = o caminho completo deste proprio arquivo.
 # os.path.dirname(...)        = sobe um nivel e pega so a PASTA onde ele esta.
@@ -132,7 +134,7 @@ class GlitchEngine:
     # em que a gente cria o motor. E onde ele guarda suas coisas iniciais.
     # Os valores depois do "=" sao PADROES: se ninguem disser, usa esses.
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
-                 verbose: bool = True, step: float = DEFAULT_STEP,
+                 verbose: bool = b_config.DEBUG, step: float = DEFAULT_STEP,
                  max_words: int = DEFAULT_WORDS):
         # cria o "carteiro" que vai mandar as mensagens OSC pro endereco e porta.
         self.client = udp_client.SimpleUDPClient(host, port)
@@ -248,6 +250,83 @@ class GlitchEngine:
         self.client.send_message("/mundo/glitch_reset", [])
         if self.verbose:
             print("[GLITCH] corrupcao zerada (nova consulta).")
+
+
+# =============================================================================
+# A PONTE DO FLUXO CONTINUO (o "theremin")
+#
+# Enquanto o GlitchEngine acima e DISCRETO (um soco por carta), esta ponte e
+# CONTINUA: o b_aruco, a cada quadro, manda a POSE de cada marcador visivel
+# (onde esta, quao perto, quanto inclinado) e o SuperCollider modula uma voz ao
+# vivo com isso -- a camera vira um instrumento, tipo theremin. Quando o
+# marcador SOME, a ponte pede a cauda (a voz nao corta seco; ecoa em delay/
+# reverb). So o b_aruco usa isto; sem webcam (teclado), ninguem chama.
+#
+#   /mundo/control     [id, naipe, x, y, size, spin, tilt, luma] - enquanto presente
+#   /mundo/control_off [id]                                      - quando some (cauda)
+#
+# Os numeros da pose (todos 0..1, menos 'spin' que e -1..1) sao calculados no
+# b_aruco a partir dos 4 cantos do marcador (sem precisar calibrar a camera):
+#   x,y  = onde o marcador esta na imagem (x = scrub do sample ; y = altura/pitch)
+#   size = tamanho aparente -> perto/longe (perto = mais intenso/denso)
+#   spin = rotacao no proprio plano (girar a carta na mesa) -> detune/timbre
+#   tilt = inclinacao (0 = de frente ; 1 = tombado) -> FREEZE (congela)
+#   luma = brilho do marcador (iluminacao) -> cor do filtro/timbre
+# =============================================================================
+
+class TereminBridge:
+    """Manda a pose de cada marcador (continuo) e pede a cauda quando some.
+
+    Faz rate-limit por id (CONTROL_RATE_HZ) pra nao inundar o SC: a webcam
+    cospe ~30 quadros/s, mas mandar isso vezes N marcadores entope a rede sem
+    ganho audivel. O primeiro recado de um id sai NA HORA (abre a voz); os
+    seguintes respeitam o intervalo minimo."""
+
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
+                 verbose: bool = b_config.DEBUG,
+                 rate_hz: float = b_config.CONTROL_RATE_HZ):
+        self.client = udp_client.SimpleUDPClient(host, port)
+        self.verbose = verbose
+        # intervalo minimo (segundos) entre dois /mundo/control do MESMO id.
+        self.min_dt = 1.0 / max(1.0, float(rate_hz))
+        self._last_send = {}   # id -> instante (s) do ultimo envio
+        self._active = set()   # ids com voz ABERTA agora no SC
+        if verbose:
+            print(f"[THEREMIN] fluxo continuo -> {host}:{port} "
+                  f"(/mundo/control, ate {b_config.MAX_VOICES} vozes)")
+
+    def update(self, mid: int, suit, x: float, y: float,
+               size: float, spin: float, tilt: float, luma: float = 0.5):
+        """Manda a pose deste marcador (abre a voz na primeira vez)."""
+        now = time.time()
+        last = self._last_send.get(mid, 0.0)
+        # ja tem voz aberta E ainda nao deu o intervalo minimo -> segura o envio.
+        if (mid in self._active) and ((now - last) < self.min_dt):
+            return
+        self._last_send[mid] = now
+        self._active.add(mid)
+        # 'suit' pode ser None (curingao) -> manda "?" e o SC escolhe um sabor neutro.
+        # 'luma' (iluminacao do marcador) entra como ultimo dado -> cor do timbre.
+        self.client.send_message(
+            "/mundo/control",
+            [int(mid), str(suit or "?"), float(x), float(y),
+             float(size), float(spin), float(tilt), float(luma)])
+
+    def release(self, mid: int):
+        """Marcador sumiu: solta a voz (gate=0) -> cauda em delay/reverb."""
+        if mid in self._active:
+            self._active.discard(mid)
+            self._last_send.pop(mid, None)
+            self.client.send_message("/mundo/control_off", [int(mid)])
+
+    def release_all(self):
+        """Solta TODAS as vozes (fim da partida / saida)."""
+        for mid in list(self._active):
+            self.release(mid)
+
+    def active_ids(self) -> set:
+        """Quais ids estao controlando som agora (o b_aruco usa pra saber quem soltar)."""
+        return set(self._active)
 
 
 # =============================================================================

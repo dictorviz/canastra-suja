@@ -43,13 +43,17 @@ USO:
 
 TECLAS na janela: q/ESC=sair  f=tela cheia  h=HUD operador  m=espelhar
                   g=liga/desliga o apodrecer da imagem  r=nova mao
+GESTO DE FIM: cobrir a camera por ~3s (sem marcador nenhum) ENCERRA a peca --
+              solta as vozes, para os habitats (fade) e a projecao escurece.
 
 Requer: pip install opencv-contrib-python  +  uma webcam.
 """
 
+import math  # contas de geometria (angulo/distancia dos cantos do marcador)
 import os
 import random
 import sys  # acessa argumentos da linha de comando e o nome do sistema (Windows/Linux)
+import time  # relogio: marca QUANDO cada carta disparou (cooldown do pedido 3)
 
 # Tenta importar as ferramentas de imagem. Se nao estiverem instaladas, em vez
 # de quebrar, a gente "captura" o erro (except ImportError) e segue com elas
@@ -64,6 +68,7 @@ except ImportError:  # OpenCV ausente: o modulo ainda importa (mapa/fallback)
     np = None
 
 from b_samples import RANKS, SUIT_NAMES
+import b_config  # o painel de ajustes unico (DEBUG, taxa/suavizacao do fluxo continuo)
 
 # Ordem dos naipes pra convencao de id (id // 13). Bate com SUIT_NAMES.
 SUIT_ORDER = ["C", "O", "E", "P"]
@@ -121,6 +126,68 @@ def _aruco_dict():
     # pega o "dicionario" de marcadores que o OpenCV ja conhece (o DICT_4X4_250).
     # getattr(aruco, "DICT_4X4_250") busca esse nome dentro da ferramenta aruco.
     return aruco.getPredefinedDictionary(getattr(aruco, ARUCO_DICT_ID))
+
+
+# =============================================================================
+# POSE DO MARCADOR (o coracao do "theremin") -- nao depende de calibrar a camera
+# =============================================================================
+
+def _pose_features(corner, w: int, h: int, gray=None):
+    """Extrai a POSE de UM marcador a partir dos seus 4 cantos, sem precisar
+    calibrar a camera. Devolve (x, y, size, spin, tilt, luma), pronta pro fluxo
+    continuo (o b_glitch.TereminBridge manda, o b_synth.scd pica o sample):
+
+        x    = posicao horizontal 0..1 -> SCRUB (qual fragmento do mundo) + azimute
+        y    = posicao vertical 0..1   -> ALTURA (pitch dos graos)
+        size = tamanho aparente 0..1 (perto = maior) -> DINAMICA + densidade de graos
+        spin = rotacao no plano -1..1 (girar a carta) -> detune / timbre
+        tilt = inclinacao 0..1 (0 = de frente ; 1 = tombada) -> FREEZE (congela)
+        luma = brilho medio do marcador 0..1 (iluminacao) -> COR do filtro/timbre
+
+    Os 4 cantos vem na ordem do ArUco: [sup-esq, sup-dir, inf-dir, inf-esq].
+    'tilt' usa o "encurtamento de perspectiva": de frente, lados opostos do
+    quadrado tem o MESMO comprimento na imagem; tombado, um lado encolhe."""
+    pts = corner.reshape(4, 2)  # 4 pontos (x, y) em pixels
+    tl, tr, br, bl = pts[0], pts[1], pts[2], pts[3]
+
+    # centro do marcador -> posicao 0..1 na imagem
+    cx = float(pts[:, 0].mean())
+    cy = float(pts[:, 1].mean())
+    x = min(1.0, max(0.0, cx / max(1.0, float(w))))
+    y = min(1.0, max(0.0, cy / max(1.0, float(h))))
+
+    # area pelo metodo do "cadarco" (shoelace) -> lado equivalente -> tamanho 0..1.
+    area = 0.0
+    for i in range(4):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % 4]
+        area += (float(x1) * float(y2)) - (float(x2) * float(y1))
+    side = math.sqrt(abs(area) * 0.5)          # "lado" aparente em pixels
+    size = min(1.0, side / (0.45 * max(1.0, float(h))))  # ~meia-altura = perto
+
+    # spin: angulo da aresta de cima (sup-esq -> sup-dir). 0 = carta "reta".
+    spin = math.atan2(float(tr[1] - tl[1]),
+                      float(tr[0] - tl[0])) / math.pi  # -1..1
+
+    # tilt: diferenca relativa entre lados opostos (horizontal e vertical).
+    def _d(a, b):
+        return math.hypot(float(a[0] - b[0]), float(a[1] - b[1]))
+    top = _d(tl, tr); bot = _d(bl, br)
+    left = _d(tl, bl); right = _d(tr, br)
+    skew_h = abs(top - bot) / max(1.0, top + bot)
+    skew_v = abs(left - right) / max(1.0, left + right)
+    tilt = min(1.0, (skew_h + skew_v) * 2.0)   # *2 = ganho (a perspectiva e sutil)
+
+    # luma: brilho MEDIO dos pixels na caixa do marcador (0..1) -- a "iluminacao"
+    # que vira controle de timbre/cor. Sem o quadro em cinza (gray=None) -> 0.5.
+    luma = 0.5
+    if gray is not None:
+        x0 = max(0, int(pts[:, 0].min())); x1 = min(int(w), int(pts[:, 0].max()) + 1)
+        y0 = max(0, int(pts[:, 1].min())); y1 = min(int(h), int(pts[:, 1].max()) + 1)
+        if (x1 > x0) and (y1 > y0):
+            luma = float(gray[y0:y1, x0:x1].mean()) / 255.0
+
+    return (x, y, size, spin, tilt, luma)
 
 
 # =============================================================================
@@ -197,6 +264,29 @@ def _draw_hud(frame, partida):
     _put(frame, f"degradacao {int(pct * 100)}%", (bx, by - 8), 0.6, (255, 255, 255), 1)
 
 
+def _draw_pose_hud(frame, pose_ema):
+    """So em DEBUG: lista, num cantinho, a pose de cada voz continua ativa
+    (x/y/size/spin/tilt) pra calibrar o theremin. Em apresentacao (DEBUG=False)
+    nem e chamado -- a projecao fica limpa."""
+    h, w = frame.shape[:2]
+    x0 = max(20, w - 380)
+    y0 = 34
+    _put(frame, "POSE (debug)", (x0, y0), 0.7, (120, 255, 180), 2)
+    for mid, feats in sorted(pose_ema.items()):
+        x, yy, size, spin, tilt, luma = feats
+        y0 += 28
+        card = id_to_card(mid)
+        if card and card[1] is None:
+            nome = "JOKER"
+        elif card:
+            nome = f"{card[0]}{card[1]}"
+        else:
+            nome = f"id{mid}"
+        txt = (f"{nome:>5}  x{x:.2f} y{yy:.2f} s{size:.2f} "
+               f"r{spin:+.2f} t{tilt:.2f} l{luma:.2f}")
+        _put(frame, txt, (x0, y0), 0.55, (120, 255, 180), 1)
+
+
 def _degradar(frame, level: float, kicks=None):
     """Apodrece a imagem: um PISO global (level 0..1) que sobe DEVAGAR com o
     acumulo + um SOCO por carta na operacao do NAIPE que caiu (kicks), espelhando
@@ -227,7 +317,8 @@ def _degradar(frame, level: float, kicks=None):
     shred = min(1.0, level * 0.5 + kicks.get("shards", 0.0))     # Espadas
 
     # 1. sangria de cor (Copas/detune): canais B e R escorregam em sentidos opostos
-    shift = int(chroma * 16)
+    # (suavizado: teto menor pra ficar textura, nao abstracao total)
+    shift = int(chroma * 10)
     if shift > 0:
         b, g, r = cv2.split(out)  # separa a imagem nas 3 cores
         # np.roll desliza uma cor pro lado; faz a azul ir pra um lado e a vermelha
@@ -236,23 +327,23 @@ def _degradar(frame, level: float, kicks=None):
 
     # 2. bitcrush de cor (Paus/saturate): esmaga a profundidade de bits (menos tons
     #    de cor -> a imagem fica "chapada", tipo videogame antigo)
-    bits = int(round(crush * 5))                  # ate 5 bits fora -> 3-bit color
+    bits = int(round(crush * 3))                  # suavizado: ate 3 bits fora (era 5)
     if bits > 0:
         mask = (0xFF << bits) & 0xFF
         out = (out & np.uint8(mask))
 
     # 3. scanlines: estrias que escurecem linhas alternadas (puro acumulo)
     if level > 0.2:
-        dark = 1.0 - ((level - 0.2) * 0.7)
+        dark = 1.0 - ((level - 0.2) * 0.5)   # suavizado (era 0.7): scanline mais leve
         out = out.copy()
         out[::2, :] = (out[::2, :] * dark).astype(np.uint8)  # "::2" = de 2 em 2 linhas
 
     # 4. blocos arrancados (Espadas/shards): datamosh tosco -- copia pedacos da
     #    imagem pra lugares ligeiramente errados, varias vezes.
-    nblocks = int(shred * 12)
+    nblocks = int(shred * 8)              # suavizado (era 12): menos blocos arrancados
     if nblocks > 0:
         out = out.copy() if out is frame else out
-        amp = int(shred * 44)
+        amp = int(shred * 28)             # suavizado (era 44): deslocamento menor
         for _ in range(nblocks):
             bw = random.randint(20, max(21, w // 6))
             bh = random.randint(8, max(9, h // 12))
@@ -262,7 +353,7 @@ def _degradar(frame, level: float, kicks=None):
 
     # 5. ruido granulado que cresce com o acumulo (chuvisco, tipo TV sem sinal)
     if level > 0.3:
-        sigma = (level - 0.3) * 60
+        sigma = (level - 0.3) * 38   # suavizado (era 60): chuvisco mais discreto
         noise = np.random.normal(0, sigma, (h, w, 1)).astype(np.int16)
         out = np.clip(out.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
@@ -337,6 +428,26 @@ def _set_fullscreen(win, on):
 STABLE_FRAMES = 3
 GONE_FRAMES = 8
 
+# Cooldown da carta (pedido 3): alem do debounce acima, cada marcador so pode
+# DISPARAR a jogada discreta (habitat + sujeira) uma vez a cada CARD_COOLDOWN_S
+# segundos. Reapareceu antes disso -> NAO re-dispara (mas o teremim continua
+# alterando o som ao vivo, pois o fluxo continuo nao olha esse cooldown).
+CARD_COOLDOWN_S = b_config.CARD_COOLDOWN_S
+
+# Tolerancia da voz CONTINUA (theremin): quantos quadros um marcador pode SUMIR
+# antes da gente soltar a voz. Enquanto isso, a pose congela na ultima posicao --
+# entao um pisca-pisca da deteccao (1-2 quadros) NAO corta mais o som. E o
+# conserto principal do "corta o reconhecimento". Maior = voz mais "grudenta".
+GONE_FRAMES_VOICE = 8
+
+# Gesto de FINALIZAR (pedido 4): COBRIR A CAMERA. Se a peca ja comecou (ja caiu
+# ao menos uma carta) e NENHUM marcador valido aparece por END_COVER_S segundos
+# SEGUIDOS, a obra ENCERRA: solta as vozes do theremin, para os habitats (fade) e
+# a projecao escurece em END_FADE_S. Cobrir a lente = apagar a luz da peca.
+# (Sobe END_COVER_S se a camera cega sem querer no meio; abaixa pra encerrar antes.)
+END_COVER_S = 3.0
+END_FADE_S = 4.0
+
 
 def run(num_jogadores: int, seed=None, camera_index: int = 0,
         fullscreen: bool = False, mirror: bool = False, hud: bool = False,
@@ -360,6 +471,14 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     # prepara o "detetor" de marcadores do OpenCV.
     dic = _aruco_dict()
     params = aruco.DetectorParameters()
+    # refinamento SUBPIXEL dos cantos: estabiliza MUITO a pose (x/y/size/spin/tilt
+    # tremem menos) -> o teremim derrete mais liso e "corta" menos. So melhora a
+    # precisao; nao muda QUAIS marcadores sao achados. (Se a versao do OpenCV nao
+    # tiver essa constante, ignora sem quebrar.)
+    try:
+        params.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
+    except AttributeError:
+        pass
     detector = aruco.ArucoDetector(dic, params)
 
     cap, camera_index = _open_camera(camera_index)  # abre a webcam (com fallback)
@@ -382,7 +501,18 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     # dois "cadernos" pro debounce (ver explicacao em STABLE_FRAMES/GONE_FRAMES):
     seen = {}    # id -> quadros consecutivos visto (estabilidade)
     active = {}  # id -> quadros consecutivos sumido (presente=ja disparou)
+    fired_at = {}  # id -> instante (s) do ultimo disparo discreto (cooldown pedido 3)
     prev_disp = None  # ultimo quadro projetado (pro stutter da degradacao)
+    # caderno do FLUXO CONTINUO (theremin): a pose suavizada de cada marcador que
+    # esta controlando som agora. id -> (x, y, size, spin, tilt). A media movel
+    # (EMA) tira o tremor da mao; ver CONTROL_SMOOTH no b_config.
+    pose_ema = {}
+    SMOOTH = b_config.CONTROL_SMOOTH
+    voice_gone = {}  # id -> quadros consecutivos fora dos escolhidos (histerese da voz)
+    # gesto de FINALIZAR (cobrir a camera): estado pra detectar a lente coberta.
+    started = False           # a peca ja comecou? (so deixa encerrar depois da 1a carta)
+    last_seen = time.time()   # ultimo instante com ALGUMA carta visivel
+    ending_at = None          # instante em que o fim disparou (None = ainda tocando)
 
     # mostra a resolucao que a webcam REALMENTE entregou (pode nao ser 720p).
     cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -391,7 +521,8 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     if cam_w < 1280:
         print("     (abaixo de 720p -> marcadores precisam estar MAIS PERTO; "
               "use marcadores maiores se possivel.)")
-    print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao\n")
+    print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao")
+    print(f"     [fim] cobrir a camera por ~{int(END_COVER_S)}s encerra a peca (fade-out de tudo).\n")
 
     # "try/finally": faca o laco; aconteca o que acontecer (saida normal ou erro),
     # no FIM solte a camera e feche as janelas direitinho (o bloco 'finally').
@@ -409,22 +540,49 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 present = {int(x) for x in ids.flatten()}  # junta todos os ids num conjunto
                 aruco.drawDetectedMarkers(frame, corners, ids)  # desenha as bordas na imagem
 
+            # ---- GESTO DE FINALIZAR (pedido 4): COBRIR A CAMERA ----
+            # se a peca ja comecou e NENHUMA carta valida aparece por END_COVER_S
+            # segundos seguidos, encerra: solta as vozes, para os habitats (fade) e
+            # escurece a projecao (mais abaixo). Cobrir a lente = apagar a luz.
+            tnow = time.time()
+            cards_visible = any(id_to_card(m) is not None for m in present)
+            if cards_visible:
+                last_seen = tnow          # tem carta na tela -> reinicia a contagem
+            if fired_at:
+                started = True            # ja caiu ao menos uma carta -> a peca comecou
+            if (ending_at is None) and started and (not cards_visible) \
+                    and (tnow - last_seen >= END_COVER_S):
+                ending_at = tnow
+                partida.encerrar()        # solta vozes do theremin + para habitats (fade)
+                print(f"[FIM] camera coberta {END_COVER_S:.0f}s -> encerrando a peca "
+                      f"(fade {END_FADE_S:.0f}s). 'r' recomeca; q/ESC sai.")
+
             # marcadores NOVOS e estaveis deste quadro (varios juntos = rajada)
+            now = time.time()  # relogio deste quadro (pro cooldown da carta)
             fired = []  # cartas que vao "disparar" neste quadro
             for mid in present:
                 seen[mid] = seen.get(mid, 0) + 1  # conta +1 quadro que esse id apareceu
                 if mid in active:
                     active[mid] = 0  # ja disparou e continua na mesa -> zera ausencia
-                elif seen[mid] >= STABLE_FRAMES:  # apareceu estavel o bastante -> dispara!
-                    card = id_to_card(mid)
-                    if card is not None:
-                        fired.append(card)
-                    active[mid] = 0
+                elif seen[mid] >= STABLE_FRAMES:  # apareceu estavel o bastante...
+                    active[mid] = 0  # marca como "ja visto" (debounce), dispare ou nao
+                    # ...mas so DISPARA a jogada se passou o cooldown desde a ultima
+                    # vez que ESTA carta disparou (pedido 3: limite de ~2.5 min).
+                    if (now - fired_at.get(mid, -1e9)) >= CARD_COOLDOWN_S:
+                        card = id_to_card(mid)
+                        if card is not None:
+                            fired.append(card)
+                            fired_at[mid] = now  # arma o cooldown desta carta
+                    elif b_config.DEBUG:
+                        falta = CARD_COOLDOWN_S - (now - fired_at[mid])
+                        print(f"[COOLDOWN] id {mid} ignorado "
+                              f"({falta:.0f}s ate poder disparar de novo)")
             # 1 carta = jogada normal; varias no mesmo quadro = canastra baixada
             # de uma vez -> rajada (cama em cascata, camada B consolidada)
-            if len(fired) == 1:
+            # (durante o encerramento NAO dispara carta nova -- a peca so desvanece)
+            if ending_at is None and len(fired) == 1:
                 partida.jogar_carta(fired[0])
-            elif len(fired) > 1:
+            elif ending_at is None and len(fired) > 1:
                 partida.jogar_rajada(fired)
             # quem saiu de cena: conta ausencia ate liberar pra disparar de novo
             for mid in list(active.keys()):
@@ -436,6 +594,65 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
             for mid in list(seen.keys()):
                 if mid not in present and mid not in active:
                     seen.pop(mid, None)
+
+            # ---- FLUXO CONTINUO (theremin): a pose vira controle, todo quadro ----
+            # Diferente do debounce acima (que dispara UMA vez por carta), aqui a
+            # POSE de cada marcador visivel alimenta o SuperCollider continuamente:
+            # mexeu a carta, mexeu o som. Pega ate MAX_VOICES marcadores (os
+            # MAIORES = mais perto/intencionais), suaviza (EMA) e manda. Os que
+            # sumiram sao SOLTOS (gate=0 -> cauda em delay/reverb, nao corta seco).
+            fh, fw = frame.shape[:2]
+            feats_now = {}  # id -> pose crua deste quadro
+            if ids is not None and len(ids) > 0:
+                # quadro em cinza: a iluminacao (luma) de cada marcador sai do
+                # brilho medio na caixa dele -- mais um controle pro teremim.
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                for c, i in zip(corners, ids.flatten()):
+                    mid = int(i)
+                    if id_to_card(mid) is None:  # id fora do baralho -> ignora
+                        continue
+                    feats_now[mid] = _pose_features(c, fw, fh, gray)
+            # ordena por tamanho (size = indice 2 da tupla), maiores primeiro,
+            # e fica so com os MAX_VOICES primeiros (os mais perto da camera).
+            chosen = sorted(feats_now.items(), key=lambda kv: kv[1][2],
+                            reverse=True)[:b_config.MAX_VOICES]
+            # durante o encerramento, nao abre/atualiza voz nenhuma (ja foram soltas
+            # em partida.encerrar()): zera os escolhidos pra so deixar o som cair.
+            if ending_at is not None:
+                chosen = []
+            chosen_ids = set()
+            for mid, raw in chosen:
+                chosen_ids.add(mid)
+                prev = pose_ema.get(mid)
+                # EMA: mistura a pose nova com a anterior (suaviza o tremor).
+                if prev is None:
+                    sm = raw
+                else:
+                    sm = tuple(a * SMOOTH + p * (1.0 - SMOOTH)
+                               for a, p in zip(raw, prev))
+                pose_ema[mid] = sm
+                _, suit = id_to_card(mid)        # o naipe escolhe o sabor da voz
+                partida.teremin.update(mid, suit, *sm)
+            # quem NAO esta entre os escolhidos neste quadro: nao solta na hora.
+            # Segura a voz por GONE_FRAMES_VOICE quadros, congelando a ultima pose,
+            # pra um pisca da deteccao nao picotar o teremim. So depois da
+            # tolerancia a voz desce em cauda (release) -- nunca corta seco.
+            for mid in list(partida.teremin.active_ids()):
+                if mid in chosen_ids:
+                    voice_gone.pop(mid, None)
+                    continue
+                n = voice_gone.get(mid, 0) + 1
+                voice_gone[mid] = n
+                last = pose_ema.get(mid)
+                if n < GONE_FRAMES_VOICE and last is not None:
+                    # lacuna curta: mantem a voz viva reenviando a ultima pose.
+                    card = id_to_card(mid)
+                    suit = card[1] if card else None
+                    partida.teremin.update(mid, suit, *last)
+                else:
+                    partida.teremin.release(mid)
+                    pose_ema.pop(mid, None)
+                    voice_gone.pop(mid, None)
 
             # 'disp' e a imagem que vai pra tela. Se 'mirror', espelha (tipo selfie).
             disp = cv2.flip(frame, 1) if mirror else frame.copy()
@@ -458,6 +675,17 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                     prev_disp = disp
             if hud:  # operador: ligar so pra conferir (aparece pro publico tb)
                 _draw_hud(disp, partida)
+            if b_config.DEBUG and pose_ema:  # so no laboratorio: numeros da pose
+                _draw_pose_hud(disp, pose_ema)
+            # ESCURECIMENTO FINAL (gesto de cobrir a camera): a imagem some em
+            # END_FADE_S. Quando zera, sai do laco (o 'finally' encerra tudo limpo).
+            # 'r' cancela (ending_at volta a None) -> a projecao reacende.
+            if ending_at is not None:
+                k = 1.0 - ((time.time() - ending_at) / END_FADE_S)
+                if k <= 0.0:
+                    break
+                if np is not None:
+                    disp = (disp.astype(np.float32) * k).astype(np.uint8)
             cv2.imshow(win, disp)  # finalmente, mostra a imagem na janela
 
             # le se alguma tecla foi apertada (espera 1 milissegundo). O "& 0xFF"
@@ -476,6 +704,10 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 degradar = not degradar             # liga/desliga o apodrecer da imagem
             elif key == ord('r'):
                 partida.reset()                     # nova mao (zera a sujeira)
+                fired_at.clear()                    # libera todas as cartas pra disparar de novo
+                ending_at = None                    # cancela um encerramento em curso (reacende)
+                started = False                     # a peca recomeca do zero
+                last_seen = time.time()             # zera a contagem do gesto de cobrir
     finally:
         # sempre executado no fim: devolve a camera ao sistema e fecha tudo limpo.
         cap.release()

@@ -24,11 +24,12 @@ precisa saber dos detalhes de cama/mundo/glitch.
 import random
 from typing import Optional, Tuple  # Tuple = "uma tupla", o par fixo (rank, suit)
 
-# importa as quatro pecas, cada uma do seu arquivo:
+# importa as pecas, cada uma do seu arquivo:
 from b_samples import MundoPlayer, RANKS, SUIT_NAMES
-from b_glitch import GlitchEngine, SUIT_GLITCH, GLITCH_LABEL
+from b_glitch import GlitchEngine, TereminBridge, SUIT_GLITCH, GLITCH_LABEL
 from b_buraco import Mesa
 from a_cama import CamaViva
+import b_config  # o painel de ajustes unico (DEBUG)
 
 
 class Partida:
@@ -36,12 +37,16 @@ class Partida:
     degradacao. Cada carta TOCA a cama, atravessa um habitat e suja o som."""
 
     def __init__(self, num_jogadores: int, seed: Optional[int] = None,
-                 verbose: bool = True):
-        # na montagem, FABRICA as quatro pecas e guarda cada uma dentro de si.
+                 verbose: bool = b_config.DEBUG):
+        # na montagem, FABRICA as pecas e guarda cada uma dentro de si.
         self.mesa = Mesa(num_jogadores)           # quem joga e de quem e a vez
         self.cama = CamaViva(verbose=verbose)     # camada A: vibrafone tocado pelas cartas
         self.player = MundoPlayer(verbose=verbose, seed=seed)  # os habitats
-        self.glitch = GlitchEngine(verbose=verbose)            # a sujeira
+        self.glitch = GlitchEngine(verbose=verbose)            # a sujeira (discreta, por carta)
+        # a ponte do fluxo CONTINUO (theremin): a pose dos marcadores ao vivo. So
+        # o b_aruco a alimenta (partida.teremin.update/release); sem webcam fica
+        # parada, sem custo. Mora aqui pra reset()/encerrar() soltarem as vozes.
+        self.teremin = TereminBridge(verbose=verbose)
         self.suits = list(SUIT_NAMES.keys())      # ["C","O","E","P"], usado em sorteios
         self._rng = random.Random(seed)           # sorteador proprio (semente = repetivel)
         self.ultima: Optional[Tuple[str, str]] = None  # (rank, suit) ultima carta jogada
@@ -55,10 +60,11 @@ class Partida:
     def jogar(self, rank: str, suit: str, kick: Optional[float] = None):
         """Joga uma carta: toca a cama + atravessa um habitat + degradacao + passa a vez."""
         suit = suit.upper()
-        # AQUI esta o coracao da peca: as tres camadas reagem a MESMA carta, em ordem.
-        self.cama.tocar_carta(rank, suit)        # 1) o vibrafone badala
-        self.player.play_card(rank, suit)        # 2) o mundo atravessa de habitat
-        self.glitch.corrupt(rank, suit, kick=kick)  # 3) a sujeira sobe
+        # AQUI esta o coracao da peca: as camadas reagem a MESMA carta, em ordem.
+        # (Vibrafone REMOVIDO -- pedido 4: nao casava com o resto. A cama segue
+        #  instanciada so pra reset()/painel, mas nao badala mais a cada carta.)
+        self.player.play_card(rank, suit)        # 1) o mundo atravessa de habitat
+        self.glitch.corrupt(rank, suit, kick=kick)  # 2) a sujeira sobe
         self.ultima = (rank, suit)               # lembra qual foi a ultima carta
         self.mesa.proximo()                      # 4) passa a vez pro proximo jogador
 
@@ -89,12 +95,7 @@ class Partida:
             self.jogar_carta(cartas[0])
             return
 
-        # 1. cama: cascata -- toda carta soa na hora
-        for rank, suit in cartas:   # pra cada carta da rajada...
-            if suit is None:
-                self.cama.tocar_joker()
-            else:
-                self.cama.tocar_carta(rank, suit)
+        # 1. (vibrafone REMOVIDO -- pedido 4: a rajada nao badala mais a cama.)
 
         # 2. camada B consolidada: a carta de golpe mais forte rege a travessia.
         # Aqui criamos uma mini-funcao DENTRO do metodo (so usada aqui embaixo):
@@ -118,9 +119,9 @@ class Partida:
         self.mesa.proximo()
 
     def jogar_joker(self):
-        """Curingao: acento na cama + naipe sorteado (espacializacao) + forca maxima."""
+        """Curingao: naipe sorteado (espacializacao) + forca maxima de sujeira."""
         suit = self._rng.choice(self.suits)    # o coringa nao tem naipe -> sorteia um
-        self.cama.tocar_joker()                # badalada de acento (no forte)
+        # (vibrafone REMOVIDO -- pedido 4: nem o coringa badala mais a cama.)
         self.player.play_card("JOKER", suit)   # atravessa habitat
         self.glitch.corrupt("JOKER", suit, kick=1.0)  # sujeira no maximo
         self.ultima = ("JOKER", suit)
@@ -139,11 +140,13 @@ class Partida:
 
     def reset(self):
         """Nova mao: zera a degradacao acumulada e volta o painel da cama ao centro."""
-        self.glitch.reset()   # sujeira de volta a zero
-        self.cama.reset()     # painel do vibrafone de volta ao centro
+        self.glitch.reset()        # sujeira de volta a zero
+        self.cama.reset()          # painel do vibrafone de volta ao centro
+        self.teremin.release_all() # solta as vozes continuas abertas (cauda)
 
     def encerrar(self):
-        """Fim da partida: encerra o habitat."""
+        """Fim da partida: encerra o habitat e solta as vozes do theremin."""
+        self.teremin.release_all()  # nenhuma voz continua presa tocando
         self.player.stop()
 
     # --- estado pra UI (terminal ou projecao) ---------------------------

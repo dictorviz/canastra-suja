@@ -13,13 +13,17 @@ nao faz som -- ele apenas abre a peca. Pra rodar, no terminal:
     python main.py
 
 A poetica e o BURACO (2-4 jogadores). NAO ha baralho que toca sozinho: os
-JOGADORES tocam a peca. Cada carta da vida real faz DUAS coisas ao mesmo tempo:
+JOGADORES tocam a peca. Cada carta da vida real faz o MUNDO (b_synth) reagir:
 
-  - CAMA (a_synth) - TOCA o vibrafone ao vivo: cada carta gira um parametro do
-    painel e dispara uma badalada na hora (estado rolante; ver a_cama.py). Sem
-    carta, sem som -- a cama nao anda sozinha.
-  - MUNDO (b_synth) - atravessa um habitat gravado (samples mp3/wav) e soma ao
-    nivel de degradacao/glitch. O som vai se sujando carta a carta.
+  - atravessa um habitat gravado (samples mp3/wav) -- crossfade pro proximo;
+  - soma ao nivel de degradacao/glitch -- o som vai se sujando carta a carta;
+  - (so na webcam) vira THEREMIN: a pose da carta modula uma voz ao vivo que
+    pica o habitat e buga/desbuga o som.
+
+A CAMA (a_synth, o vibrafone) ficou DORMENTE: foi tirada da peca ao vivo (a
+b_partida nao toca mais a cama). O a_synth.scd ainda precisa rodar -- ele boota
+o servidor de audio e o master limiter -- mas a badalada so soa no demo
+(python a_cama.py). Ver o README (secao "Camada A -- dormente").
 
 Menu:
 
@@ -81,18 +85,18 @@ def _ask_num_seed():
 
 
 def opt_jogar():
-    """A peca por TECLADO: cada carta digitada (b_teclado) toca a cama (vibrafone
-    ao vivo) + atravessa um habitat + suja. A vez gira. A cama nao toca sozinha."""
+    """A peca por TECLADO: cada carta digitada (b_teclado) atravessa um habitat +
+    suja o som (glitch). A vez gira. (Sem theremin -- ele precisa da webcam.)"""
     import b_teclado
     _print_header("CANASTRA SUJA - JOGAR (cartas no teclado)")
     print()
     # daqui pra baixo e so um monte de print() explicando pro operador o que fazer.
     print("Pre-requisito no SuperCollider, NESTA ORDEM:")
-    print("  1. a_synth.scd  (CAMA - o vibrafone, agora TOCADO pelas cartas)")
+    print("  1. a_synth.scd  (boota o servidor de audio + o master limiter)")
     print("  2. b_synth.scd  (MUNDO - habitats + degradacao)")
     print()
-    print("  CAMA  (a_synth) - cada carta gira um parametro e dispara uma badalada")
     print("  MUNDO (b_synth) - cada carta atravessa um habitat e soma degradacao")
+    print("  (a CAMA/vibrafone esta dormente -- nao soa na peca ao vivo)")
     print()
     print("Vai perguntar JOGADORES (2-4) e a seed; durante a peca, mostra de quem")
     print("e a vez (Jogador 1, Jogador 2...) e cada um lanca uma carta:")
@@ -111,8 +115,8 @@ def opt_jogar():
 
 
 def opt_aruco():
-    """A peca por WEBCAM: cada carta captada por ArUco (b_aruco) toca a cama +
-    atravessa um habitat + suja. A janela da webcam e a PROJECAO."""
+    """A peca por WEBCAM: cada carta captada por ArUco (b_aruco) atravessa um
+    habitat + suja + vira theremin (a pose). A janela da webcam e a PROJECAO."""
     import b_aruco
     import b_teclado  # noqa: F401  (usado por _ask_num_seed)
     _print_header("CANASTRA SUJA - ARUCO (webcam) - a projecao e a imagem da camera")
@@ -126,14 +130,15 @@ def opt_aruco():
         return
 
     print("Pre-requisito no SuperCollider, NESTA ORDEM:")
-    print("  1. a_synth.scd  (CAMA - o vibrafone, agora TOCADO pelas cartas)")
-    print("  2. b_synth.scd  (MUNDO - habitats + degradacao)")
+    print("  1. a_synth.scd  (boota o servidor de audio + o master limiter)")
+    print("  2. b_synth.scd  (MUNDO - habitats + degradacao + theremin)")
     print()
     print("  A janela da webcam E A PROJECAO (marcadores detectados + HUD).")
     print("  Vire as cartas com marcador ArUco na frente da camera; cada carta")
-    print("  nova toca a cama + dispara o habitat + degradacao e passa a vez.")
+    print("  nova atravessa o habitat + degradacao + vira theremin e passa a vez.")
+    print("  COBRIR a camera por ~3s ENCERRA a peca (fade-out de tudo).")
     print("  Marcadores pra imprimir:  python b_aruco.py gerar")
-    print("  Teclas na janela: q=sair  f=tela cheia  h=HUD  m=espelhar  r=nova mao")
+    print("  Teclas na janela: q=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao")
     print()
     ans = prompt("Comecar? (s/n)", "s").lower()
     if not ans.startswith('s'):

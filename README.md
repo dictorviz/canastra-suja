@@ -4,22 +4,28 @@
 
 Performance eletroacústica ao vivo construída sobre o jogo de **Buraco**
 (2–4 jogadores). Não há palavras nem voz, e **nada toca sozinho: os jogadores
-tocam a peça.** Cada carta da vida real faz **duas coisas ao mesmo tempo**, em
-duas camadas:
+tocam a peça.** Cada carta da vida real, captada por **webcam + ArUco**, faz o
+**MUNDO** (`b_*`) reagir de **três jeitos ao mesmo tempo**:
 
-- **CAMA** (`a_*`) — cada carta **toca o vibrafone ao vivo**: gira um parâmetro
-  de um "painel" de 7 botões e dispara uma badalada na hora (o **estado
-  rolante**, ver `a_cama.py`). A matemática generativa que já existia (operação
-  por naipe → 7 parâmetros) continua intacta — só que agora a **entrada são as
-  cartas reais**, não um baralho sorteado. Sem carta, sem som.
-- **MUNDO** (`b_*`) — a mesma carta faz uma biblioteca de **habitats sonoros
-  gravados** (mp3/wav) atravessar pro próximo (crossfade) e soma ao **nível de
-  degradação**. O jogo vai, carta a carta, **sujando o som**.
+- **atravessa um habitat** — uma biblioteca de paisagens sonoras gravadas
+  (mp3/wav) faz crossfade pro próximo habitat sorteado;
+- **suja o som** — soma ao **nível de degradação** (o glitch do naipe da carta),
+  que cresce carta a carta, do quase-limpo à beira do desmoronamento;
+- **vira instrumento (o theremin)** — enquanto o marcador está visível, a
+  **pose** da carta (a câmera vira um *theremin*) modula uma voz ao vivo que
+  **pica o habitat** e **buga/desbuga** o som em tempo real.
 
-A captação das cartas reais é por **webcam + ArUco**: assim que um jogador vira
-uma carta, a câmera reconhece qual é (valor + naipe) e o sistema toca a cama +
-dispara o habitat e o glitch. Tem também um modo **teclado** que simula a
-virada (pra ensaiar sem câmera).
+A captação é por **webcam + ArUco**: o jogador vira uma carta, a câmera
+reconhece qual é (valor + naipe) e dispara o habitat + o glitch + o theremin.
+Tem também um modo **teclado** que simula a virada (pra ensaiar sem câmera, sem
+o theremin — que precisa da pose da câmera).
+
+> **Camada A (a cama/vibrafone) está DORMENTE.** A peça nasceu com uma **CAMA** —
+> o vibrafone tocado pelas cartas (`a_*`, o "estado rolante"). Esse vibrafone foi
+> **tirado da peça ao vivo** (não casava com o resto): os arquivos `a_*` seguem
+> na raiz, **intactos**, e o `a_synth.scd` ainda é necessário (boota o servidor de
+> áudio e o master limiter), mas a badalada **não soa** durante o jogo — como a
+> voz do Perec, ficou arquivada *no lugar*. Ver *Camada A — dormente* abaixo.
 
 > A peça nasceu como *A Cartomante* (tarô/Perec, com voz). **Canastra Suja** é o
 > pivô: trocou a poética (do tarô pro Buraco), a fonte da carta (do teclado pra
@@ -31,31 +37,41 @@ virada (pra ensaiar sem câmera).
 ## Como funciona (a cadeia)
 
 ```
-                              ┌► a_cama  ──► a_synth.scd (/baralho/*)  [vibrafone ao vivo]
-  carta virada ─► webcam/ArUco (b_aruco) │
-  (mesa real)    ou teclado   (b_teclado)├─► b_partida ─► b_samples ──► b_synth.scd (/mundo/*) [habitat]
-                                          │             └► b_glitch  ──► b_synth.scd (/mundo/*) [degradação]
-                                          └────────────────────────────► SuperCollider ─► alto-falantes
+                                          ┌─► b_samples ──► b_synth.scd (/mundo/*) [habitat]
+  carta virada ─► webcam/ArUco (b_aruco) ─┤
+  (mesa real)    ou teclado   (b_teclado) ├─► b_glitch  ──► b_synth.scd (/mundo/*) [degradação]
+                       │                  │
+                       │ (pose, só webcam)└─► b_glitch.TereminBridge ─► b_synth.scd (/mundo/control) [theremin]
+                       └─► b_partida (junta tudo) ────────► SuperCollider ─► alto-falantes
+
+  [dormente] a_cama ─► a_synth.scd (/baralho/*)  — o vibrafone, fora da peça ao vivo
 ```
 
 1. **A carta** da vida real entra pelo teclado (`b_teclado.py`) ou pela webcam
    (`b_aruco.py`). As duas falam a mesma língua — `(valor, naipe)` — então uma
    substitui a outra sem mexer no resto. Tudo passa pelo `b_partida.py`.
-2. **A cama** (`a_cama.py`) recebe a carta, roda a operação do naipe (a
-   matemática do `nucleo_compositor`), gira **um** dos 7 parâmetros do vibrafone
-   e **dispara a badalada na hora** (`a_synth.scd`). O painel persiste entre
-   cartas — é o **estado rolante** (ver abaixo).
-3. **O mundo** (`b_samples.py`): 43 habitats longos embaralhados. A carta sorteia
+2. **O mundo** (`b_samples.py`): 43 habitats longos embaralhados. A carta sorteia
    o próximo e o mundo atravessa pra ele (crossfade, em `b_synth.scd`).
-4. **A degradação** (`b_glitch.py`) sobe a cada carta. O **naipe** escolhe a
+3. **A degradação** (`b_glitch.py`) sobe a cada carta. O **naipe** escolhe a
    operação sonora do glitch, o **valor** a força do golpe ("kick"), e o
    **acúmulo** a profundidade — começa quase limpo e termina à beira do
    desmoronamento.
+4. **O theremin** (só na webcam): a cada quadro, a **pose** de cada marcador
+   visível (`b_aruco._pose_features`) é mandada ao `b_synth.scd`, que modula uma
+   voz ao vivo — a carta vira instrumento (ver *A câmera como instrumento*).
+5. *(Dormente)* a **cama** (`a_cama.py` → `a_synth.scd`) seria o vibrafone tocado
+   pelas cartas — **fora da peça ao vivo** (ver *Camada A — dormente*).
 
 As duas camadas usam a **mesma porta OSC (57120)**, mas **namespaces separados**
 (`/baralho/*` para a cama, `/mundo/*` para o mundo), então convivem sem colisão.
 
-### O estado rolante (como os jogadores "tocam" a cama)
+### Camada A — dormente (o "estado rolante" do vibrafone)
+
+> O que segue descreve a **cama** — o vibrafone tocado pelas cartas. Ele foi
+> **tirado da peça ao vivo** (`b_partida.jogar()` não chama mais a cama). O
+> código continua intacto em `a_cama.py`/`a_synth.scd` e roda no **demo**
+> (`python a_cama.py`), mas **não soa durante o jogo**. Fica aqui como registro
+> da poética original e por se valer da mesma matemática da camada A.
 
 A nota do vibrafone tem **7 botões** (os 7 parâmetros, nesta ordem): `NOTA`,
 `ALTERAÇÃO (cents)`, `RITMO→RINGAR`, `BPM→ECOS`, `DINÂMICA`, `ARTICULAÇÃO`,
@@ -107,13 +123,15 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
 |---|---|---|
 | ♥ **Copas** | **desafina** (`detune`) | um cluster de parciais escorrega de altura, afunda |
 | ♦ **Ouros** | **congela** (`freeze`) | uma janelinha do habitat trava e repete |
-| ♠ **Espadas** | **fragmenta** (`shards`) | *(placeholder — ver abaixo)* |
+| ♠ **Espadas** | **fragmenta** (`shards`) | o habitat atual vira cacos (granular `TGrains` que estilhaça mais com o nível) |
 | ♣ **Paus** | **satura** (`saturate`) | o habitat queima (drive + fold), distorce |
 
-> **♠ Espadas — em aberto.** No projeto antigo Espadas cortava a voz do Perec em
-> cacos (granular sobre as palavras). Como a voz saiu, o cache de voz fica
-> vazio e os shards saem **mudos** — sem quebrar nada. A decidir: fragmentar os
-> próprios samples? bitcrush? reverse? (TODO em `b_glitch.py` e `b_synth.scd`).
+> **♠ Espadas — resolvido.** No projeto antigo Espadas cortava a voz do Perec em
+> cacos. Como a voz saiu, a espada agora **estilhaça o próprio habitat que está
+> tocando** (`TGrains` sobre `~mundoCurrentBuf`, em `b_synth.scd`): escolhe uma
+> região do habitat e os grãos vagam numa janela que se abre com o nível — começa
+> coeso, vira poeira conforme corrompe. Não depende mais do `tts_cache`
+> (`load_voice` virou opcional/legado).
 
 ---
 
@@ -138,10 +156,31 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
   - A **seed** só embaralha o baralho do mundo (habitats); a cama responde às
     cartas, não a um sorteio.
 
-### CAMADA A — a cama (o vibrafone tocado pelas cartas)
+- **`b_config.py`** — o **painel de ajustes único** (fonte de verdade): o flag
+  `DEBUG` (laboratório/estéreo × apresentação/octofonia), a rede OSC (`HOST`/
+  `PORT`), os parâmetros do fluxo contínuo (`CONTROL_RATE_HZ`, `CONTROL_SMOOTH`,
+  `MAX_VOICES`, `TAIL_SECONDS`) e o **cooldown da carta** (`CARD_COOLDOWN_S`): cada
+  marcador só re-dispara a jogada discreta uma vez a cada N segundos (a carta
+  parada na mesa não re-glitcha; o theremin segue alterando ao vivo). Todos os
+  módulos `b_*` importam daqui.
+- **`b_imprimir.py`** — gera **folhas A4 em PDF** com os marcadores ArUco em
+  tamanho real, prontas pra gráfica (`python b_imprimir.py`).
+- **`audio_sync.ps1`** — backup/sync do áudio pesado (`biblioteca/` + `samples/`)
+  no **Google Drive** via rclone (`push`/`pull`/`status`). Ver *Áudio e backup*.
+- **`regenera_wavs.ps1`** — regenera `samples/*.wav` a partir de `biblioteca/*.mp3`
+  (a conversão mono 44.1k). Rode depois de um `audio_sync.ps1 pull` se os mp3
+  mudaram. Ver *Áudio e backup*.
 
-- **`a_cama.py`** — a **cama ao vivo** (o **estado rolante**). Recebe cada carta
-  da partida e toca o vibrafone na hora. A classe `CamaViva`:
+### CAMADA A — a cama (o vibrafone) — **DORMENTE na peça ao vivo**
+
+> Estes arquivos seguem na raiz e funcionam (rode `python a_cama.py`), mas a
+> `b_partida` **não os chama** durante o jogo — o vibrafone foi tirado da peça
+> ao vivo. O `a_synth.scd` continua **obrigatório** porque é ele que **boota o
+> servidor de áudio e o master limiter** (o `b_synth.scd` herda os canais dele).
+
+- **`a_cama.py`** — a **cama** (o **estado rolante**). *No demo* recebe cada carta
+  e toca o vibrafone na hora; **na peça ao vivo não é chamado**. A classe
+  `CamaViva`:
   - guarda o **painel** (os 7 parâmetros, mapped_key de cada um, começando no
     centro) e um ponteiro `idx` que **gira** 0→6→0;
   - `tocar_carta(rank, suit)` — roda a operação do naipe no `InterpretadorEventos`
@@ -179,8 +218,11 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
   dormir). **Sem voz** em nenhum dos dois: ninguém dispara `/baralho/fala_*`.
 
 - **`a_synth.scd`** — o **synth da cama** no SuperCollider (namespace
-  `/baralho/*`). Boota o servidor, define os SynthDefs e os receptores OSC.
-  Recebe `/baralho/note` (do `a_cama.py`, ao vivo) e toca a badalada:
+  `/baralho/*`). **Ainda é necessário rodar:** boota o **servidor de áudio**
+  (define estéreo/octofonia) e instancia o **master limiter** por onde todo o som
+  passa. Os SynthDefs da badalada e o handler `/baralho/note` continuam aqui, mas
+  **ninguém manda `/baralho/note` na peça ao vivo** (a cama está dormente — só o
+  demo `python a_cama.py`/`a_osc.py` dispara). Quando recebe, toca a badalada:
   - `~mainSynth` é o timbre da nota. **Padrão = `\baralhoVibeKlank`** (o
     **vibrafone**, banco de ressonadores `DynKlank` com parciais inarmônicas de
     barra de metal). Alternativas pra A/B: `\baralho` (o original serra+tri+sin
@@ -223,9 +265,13 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
     pro `b_synth.scd`.
   - `SUIT_GLITCH` mapeia o **naipe → sabor** (detune/freeze/shards/saturate);
     `_kick_for_rank` mapeia o **valor → força** do golpe (A=leve … K=pesado).
-  - `load_voice()` carrega palavras do `tts_cache/` pro SC (são as que Espadas
-    fragmentaria) — hoje o cache está vazio, então shards ficam mudos
-    (placeholder).
+  - `video_kicks()` espelha o golpe do naipe na **imagem** (o `b_aruco` lê e
+    glitcha a projeção pelo mesmo naipe — detune→cor, saturate→bitcrush etc.).
+  - `TereminBridge` — a **ponte do fluxo contínuo** (o theremin): manda a pose de
+    cada marcador (`/mundo/control`, com rate-limit por id e até `MAX_VOICES`
+    vozes) e pede a **cauda** quando o marcador some (`/mundo/control_off`).
+  - `load_voice()` é **legado/opcional** (carregava palavras do Perec pro
+    `tts_cache/`); Espadas não depende mais disso — fragmenta o habitat atual.
 
 - **`b_synth.scd`** — o som do mundo no SuperCollider (namespace `/mundo/*`).
   **Aditivo**: não toca no `a_synth.scd` nem lê o sinal da camada A — são vozes
@@ -234,22 +280,31 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
   - `\mundoBed` — o habitat: `PlayBuf` longo com LPF (véu de distância) + reverb
     embutido, com crossfade por `gate`/envelope. `\mundoSample` — one-shot
     pontual.
-  - Os **4 glitches**, um por naipe: `\glitchDetune` (cluster que afunda),
-    `\glitchFreeze` (janelinha do habitat travada via `Phasor`+`BufRd`),
-    `\glitchShards` (granula uma palavra do Perec com `TGrains`) e
-    `\glitchSaturate` (o habitat atual com `tanh`+`fold2`). Todos escalam com
-    `level` e `kick`.
+  - Os **4 glitches** discretos, um por naipe: `\glitchDetune` (cluster que
+    afunda), `\glitchFreeze` (janelinha do habitat travada via `Phasor`+`BufRd`),
+    `\glitchShards` (**granula o habitat atual** com `TGrains` — não mais a voz) e
+    `\glitchSaturate` (o habitat com `tanh`+`fold2`). Todos escalam com `level`/`kick`.
+  - **`\teremin`** — a voz **contínua** do theremin (a pose do marcador a controla
+    ao vivo). Dentro dela convivem **a colagem** (grãos que picam o habitat — "os
+    áudios") e **o synth digital bugado** (modem/dial-up: tons que gaguejam,
+    chiado, bleep, ghost). Um macro **`clareza`** faz o som **bugar/desbugar**
+    sozinho (~2–5 s por fase): quando sobe, abaixa o synth e deixa o áudio
+    reconhecível; quando cai, buga tudo. Mapeamento da pose: ver *A câmera como
+    instrumento*.
   - Receptores OSC: `/mundo/load`, `/mundo/bed`, `/mundo/trigger`, `/mundo/stop`,
-    `/mundo/clear`, `/mundo/voz_load`, `/mundo/glitch`, `/mundo/glitch_reset`.
+    `/mundo/clear`, `/mundo/voz_load`, `/mundo/glitch`, `/mundo/glitch_reset`,
+    **`/mundo/control`** e **`/mundo/control_off`** (o theremin).
 
 - **`b_partida.py`** — o **motor da partida**: junta tudo num objeto só.
-  `Partida` tem a `Mesa` (b_buraco) + a `CamaViva` (a_cama) + o `MundoPlayer`
-  (b_samples) + o `GlitchEngine` (b_glitch). Cada `jogar(rank, suit)` **toca a
-  cama** (vibrafone ao vivo) + atravessa um habitat + soma degradação + **passa
-  a vez**. `jogar_joker()` (curingão = acento na cama + força máxima no mundo),
-  `reset()` (zera a degradação **e** o painel da cama — nova mão), `silencio()`,
-  `encerrar()`. Expõe `vez_label`, `corrupcao` e `ultima_str()` pra UI. É
-  **reutilizável**: teclado e webcam chamam os mesmos métodos.
+  `Partida` tem a `Mesa` (b_buraco) + o `MundoPlayer` (b_samples) + o
+  `GlitchEngine` (b_glitch) + a `TereminBridge` (b_glitch). Cada `jogar(rank,
+  suit)` atravessa um habitat + soma degradação + **passa a vez**. *(A `CamaViva`
+  ainda é instanciada, mas `jogar()` **não a toca** — vibrafone dormente, pedido
+  4; ela serve só ao `reset()`.)* `jogar_joker()` (curingão = força máxima no
+  mundo), `reset()` (zera a degradação — nova mão), `silencio()`, `encerrar()`
+  (solta as vozes do theremin + para os habitats). Expõe `vez_label`, `corrupcao`
+  e `ultima_str()` pra UI. É **reutilizável**: teclado e webcam chamam os mesmos
+  métodos.
 
 - **`b_teclado.py`** — fonte de carta por **teclado** (simula a webcam). Lê a
   carta digitada (`QC`, `10O`, `AP`, `7E`, `JOKER`, ENTER=aleatória,
@@ -268,17 +323,94 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
     rótulo: carta + id + baralho A/B) em `marcadores/` pra imprimir e colar.
   - `run(...)` — o laço: abre a webcam, detecta marcadores, e com **debounce**
     (um marcador precisa ficar estável alguns quadros pra disparar uma vez, e só
-    redispara se sumir e voltar) joga a carta na `Partida`. **A janela da webcam
-    é a projeção** (marcadores desenhados + HUD: vez, última carta, barra de
-    degradação). Teclas: `q`=sair, `f`=tela cheia, `h`=HUD, `m`=espelhar,
-    `r`=nova mão.
+    redispara se sumir e voltar) + **cooldown** (`CARD_COOLDOWN_S`) joga a carta
+    na `Partida`. **A janela da webcam é a projeção** (marcadores desenhados +
+    HUD opcional). Teclas: `q`/ESC=sair, `f`=tela cheia, `h`=HUD, `m`=espelhar,
+    `g`=liga/desliga o apodrecer da imagem, `r`=nova mão.
+  - **Gesto de finalizar (cobrir a câmera):** se a peça já começou e **nenhum**
+    marcador aparece por `END_COVER_S` (~3 s) seguidos, a obra **encerra** — solta
+    as vozes do theremin, para os habitats (fade) e a projeção escurece em
+    `END_FADE_S`. `r` cancela/recomeça. Ver *Como acabar a peça*.
+  - **Fluxo contínuo (theremin):** além do disparo discreto, a cada quadro calcula
+    a **pose** de cada marcador visível (`_pose_features`: **x/y/size/spin/tilt/luma**
+    a partir dos 4 cantos, sem calibrar a câmera) e a manda ao SC pela
+    `TereminBridge` (`b_glitch.py`). Em `DEBUG`, sobrepõe um HUD com os números da
+    pose. Ver a seção *A câmera como instrumento* abaixo.
 
 ---
 
+## A câmera como instrumento (o theremin) + debug + octofonia
+
+A captação do ArUco faz **duas coisas ao mesmo tempo**:
+
+1. **Gatilho discreto:** quando uma carta nova aparece estável (e passou o
+   `CARD_COOLDOWN_S`), ela *uma vez* atravessa um habitat e soma um passo de
+   degradação. (A cama/vibrafone **não** dispara mais — está dormente.)
+2. **Controle contínuo (o "theremin"):** enquanto o marcador está visível, a
+   câmera manda a **pose** dele ~30×/s pro SuperCollider, que **modula uma voz ao
+   vivo** (`\teremin`) — a carta vira instrumento. Quando o marcador **some**, a
+   voz não corta: solta o envelope e **ecoa em delay + reverb** (a cauda).
+
+   Dentro dessa voz convivem **duas camadas**: **(a) a colagem** — grãos
+   (`TGrains`) que picam o **habitat de verdade** ("os áudios") — e **(b) o synth
+   digital bugado** — um modem/dial-up dos anos 2000 (tons que gaguejam, chiado de
+   dados, bleep tipo morse e um modo *ghost* quase mudo, com bitcrush). Mapeamento
+   da pose (todos 0..1, menos `spin` que é −1..1):
+
+   | feature | gesto na carta | controla no som |
+   |---|---|---|
+   | `x` | mover na **horizontal** | **scrub** (qual trecho do habitat os grãos picam) + azimute/pan |
+   | `y` | mover na **vertical** | **altura/pitch** dos grãos e dos tons do modem + tempo do delay |
+   | `size` | **aproximar/afastar** | densidade dos grãos + **velocidade** do modem + intensidade |
+   | `spin` | **girar** no plano | detune dos grãos + **esmaga bits** (bitcrush) |
+   | `tilt` | **tombar** a carta | **freeze/stutter** (trava a posição, fica mais lo-fi) |
+   | `luma` | **iluminação** do marcador | **cor do filtro** + taxa do bitcrush |
+
+   O **naipe** tempera o sabor da voz. Um macro **`clareza`** (lento, aleatório)
+   faz o som **bugar/desbugar** sozinho a cada ~2–5 s: quando sobe, abaixa o synth
+   digital e levanta o áudio (dá pra entender o que é); quando cai, o synth volta e
+   buga tudo. Até `MAX_VOICES` marcadores (os mais perto) viram voz ao mesmo tempo
+   — ver `b_config.py`.
+
+### Como acabar a peça (cobrir a câmera)
+
+A peça **termina por gesto**: se ela já começou (já caiu ao menos uma carta) e
+**nenhum marcador** aparece por `END_COVER_S` (~3 s) seguidos, a obra **encerra** —
+as vozes do theremin soltam, os habitats param (fade) e a **projeção escurece** em
+`END_FADE_S` (~4 s), até o laço sair. Cobrir a lente = **apagar a luz da peça**.
+A tecla `r` cancela um encerramento em curso (recomeça a mão); `q`/ESC sai na
+hora. Os tempos moram no topo do `b_aruco.py` (suba `END_COVER_S` se a câmera
+chega a cegar no meio sem querer).
+
+### Modo debug (laboratório) × apresentação (octofonia)
+
+Há **um flag de debug** (pedido de prova) em **três lugares** que devem ficar
+**iguais**:
+
+| onde | True (laptop) | False (conservatório) |
+|---|---|---|
+| `b_config.py` → `DEBUG` | fala na tela + HUD de pose na projeção | tela quieta, projeção limpa |
+| `a_synth.scd` → `~debug` | som em **estéreo** (2 caixas) | **octofonia** (8 Genelecs, PanAz) |
+| `b_synth.scd` → `~debug` | (idem; herda os canais do `a_synth`) | (idem) |
+
+A octofonia roteia cada fonte por **azimute** (o theremin **anda** entre os 8
+Genelecs) e espalha a cama/reverbs pelo anel. Trocar estéreo↔octo exige
+**rebootar** o servidor de áudio (Ctrl+. e rodar `a_synth.scd` de novo), pois o
+número de canais de saída só é lido no boot. O **mapeamento canal→Genelec** (a
+ordem física no anel) é calibração no local, no hardware.
+
+### Não estourar o som (limiter)
+
+Tudo passa por um **master limiter** (teto rígido) no `a_synth.scd`, então os
+glitches não clipam mais. Em **debug**, o post window mostra o **pico em dBFS**
+quando chega perto do teto (o "controle de dB e RMS"). Calibragem fina de ganho
+é no ouvido, tocando.
+
 ## Referência OSC (porta 57120)
 
-**`/baralho/*`** — a cama (enviado por `a_cama.py` ao vivo, ou `a_osc.py` no
-demo autônomo → recebido por `a_synth.scd`):
+**`/baralho/*`** — a cama (**dormente na peça ao vivo**; só os demos `a_cama.py` /
+`a_osc.py` enviam → recebido por `a_synth.scd`, que mesmo sem isto boota o
+servidor + o master limiter):
 
 | Mensagem | Args | Faz |
 |---|---|---|
@@ -300,6 +432,8 @@ demo autônomo → recebido por `a_synth.scd`):
 | `/mundo/voz_load` | palavra, path | carrega palavra do Perec (Espadas corta) |
 | `/mundo/glitch` | tipo, level, kick | a corrupção da carta (naipe = tipo) |
 | `/mundo/glitch_reset` | — | nova mão (a corrupção mora no Python) |
+| `/mundo/control` | id, naipe, x, y, size, spin, tilt, luma | **theremin**: a pose do marcador ao vivo (contínuo, todo quadro) |
+| `/mundo/control_off` | id | marcador sumiu → solta a voz (cauda em delay/reverb, não corta seco) |
 
 ---
 
@@ -341,8 +475,9 @@ arquivo/
 ### Passo a passo
 1. Abra o **SuperCollider** e rode, **nesta ordem** (selecione tudo, `Ctrl+Enter`,
    com o servidor já booted):
-   - `a_synth.scd` — a **cama** (o vibrafone). Aguarde `[BARALHO] Pronto.`.
-   - `b_synth.scd` — o **mundo** (habitats + degradação). Aguarde
+   - `a_synth.scd` — **boota o servidor de áudio + o master limiter** (a cama/
+     vibrafone vive aqui, mas fica dormente na peça). Aguarde `[BARALHO] Pronto.`.
+   - `b_synth.scd` — o **mundo** (habitats + degradação + theremin). Aguarde
      `[MUNDO] Pronto.`.
    - *(opcional)* `a_banco.scd` — a **vitrine de timbres** pra audicionar e
      comparar sonoridades do vibrafone (`~bancoLista.()`, `~tocar.(\arco)`,
@@ -355,9 +490,10 @@ arquivo/
      na sua vez, lança: `QC`, `10O`, `AP`, `7E`, `JOKER`… ou ENTER pra uma
      carta aleatória, `.` pra silêncio, `r` pra nova mão, `q` pra sair.
    - **[2] Webcam (ArUco)** — vire as cartas com marcador na frente da câmera;
-     **a janela da webcam é a projeção**. Cada carta nova toca a cama + dispara
-     o habitat + degradação e passa a vez. Teclas na janela: `q`=sair, `f`=tela
-     cheia, `h`=HUD, `m`=espelhar, `r`=nova mão.
+     **a janela da webcam é a projeção**. Cada carta nova atravessa o habitat +
+     soma degradação + (na webcam) vira theremin, e passa a vez. **Cobrir a
+     câmera por ~3 s encerra a peça** (fade). Teclas: `q`/ESC=sair, `f`=tela
+     cheia, `h`=HUD, `m`=espelhar, `g`=degradar, `r`=nova mão.
 
 **Marcadores ArUco** (pra colar nas cartas): `python b_aruco.py gerar` salva
 108 PNGs em `marcadores/` — **2 baralhos** de 54 (52 cartas + 2 coringas cada).
@@ -365,8 +501,8 @@ Imprima e cole.
 
 ### Portas de entrada diretas (sem o menu)
 ```
-python b_teclado.py     # cartas no teclado (cama + mundo) — precisa de a_synth.scd + b_synth.scd
-python b_aruco.py       # cartas pela webcam — precisa de a_synth.scd + b_synth.scd + OpenCV
+python b_teclado.py     # cartas no teclado (mundo + glitch) — precisa de a_synth.scd (servidor+limiter) + b_synth.scd
+python b_aruco.py       # cartas pela webcam (mundo + glitch + theremin) — precisa de a_synth.scd + b_synth.scd + OpenCV
 python b_aruco.py gerar # gera os 108 marcadores ArUco (2 baralhos) em marcadores/
 python a_cama.py        # demo: simula cartas tocando o vibrafone ao vivo — precisa de a_synth.scd
 python a_osc.py 60      # a cama AUTÔNOMA (generativa), 60s — só pra testar o synth
@@ -388,20 +524,41 @@ O áudio **não** está versionado no git (são ~384 MB):
 `samples/` dá pra regenerar a partir de `biblioteca/`. Mas `biblioteca/` é o
 único original — **faça backup separado dele** (HD externo / nuvem).
 
+### Backup/sync no Google Drive — `audio_sync.ps1`
+
+Pra guardar e trazer o áudio entre máquinas há um script (rclone → Google Drive):
+
+```
+.\audio_sync.ps1 push      # manda biblioteca/ e samples/ PRO Google Drive
+.\audio_sync.ps1 pull      # TRAZ biblioteca/ e samples/ do Google Drive
+.\audio_sync.ps1 status    # mostra o tamanho do que está lá
+```
+
+Setup (uma vez): `winget install Rclone.Rclone`, depois `rclone config` criando
+um remote chamado **`gdrive`** (Google Drive) — o passo a passo está comentado no
+topo do `audio_sync.ps1`. O `push` usa o seu local como fonte; o `pull`
+sobrescreve o local (o script pergunta antes). Não gasta cota do GitHub e mantém
+o master `biblioteca/` salvo na nuvem.
+
 ---
 
 ## Próximos passos
 
-- **Afinar o estado rolante (no ouvido)** — o esqueleto está em `a_cama.py`:
-  calibrar o `RITMO→ringar` (quanto cada figura faz a barra soar), os gestos de
-  gramática (`A`=respira, `10`=fermata, `JOKER`=acento) e ver se 1 botão por
-  carta é a granularidade certa. Tudo a ajustar tocando de verdade.
+- **Afinar o theremin (no ouvido)** — calibrar o equilíbrio áudio × synth digital,
+  o ritmo do `clareza` (buga/desbuga) e a variedade dos regimes do modem, tudo no
+  `\teremin` do `b_synth.scd` (os números tunáveis estão comentados na própria
+  SynthDef). Decidir se algum gesto (ex.: `luma`) deve reger a clareza, hoje
+  automática.
+- **Camada A (dormente) — decidir** se o vibrafone volta de alguma forma à peça
+  (hoje `b_partida.jogar()` não chama a cama). O esqueleto segue pronto em
+  `a_cama.py`/`a_synth.scd` (o "estado rolante": `A`=respira, `10`=fermata,
+  `JOKER`=acento).
 - **ArUco na prática** — imprimir os marcadores, colar nas cartas e calibrar a
   detecção na luz/altura reais da mesa (a webcam ainda precisa ser testada no
   hardware; o pipeline já foi validado em PNG).
-- **Espadas (em aberto)** — definir o sabor novo do glitch de Espadas agora que
-  a voz saiu (fragmentar os próprios samples? bitcrush? reverse?). TODO em
-  `b_glitch.py` + `b_synth.scd`.
+- **Espadas (resolvido)** — o glitch de Espadas agora **fragmenta o próprio
+  habitat** que está tocando (`TGrains` sobre `~mundoCurrentBuf`); não depende mais
+  da voz/`tts_cache`. Resta calibrar densidade/janela no ouvido.
 - **Timbres** — afinar o vibrafone (`\baralhoVibeKlank`) e, se valer, detalhar
   técnicas estendidas (sul pont/tasto, pizz, jeté, flautando…) como variações de
   parâmetro — tudo dentro do `a_synth.scd`, com o ouvido do Victor. Há um
@@ -411,8 +568,10 @@ O áudio **não** está versionado no git (são ~384 MB):
   tasto/ponticello, pizz, sino, motor lento/rápido, gongo) e decidir o que adotar.
 - **Multijogador** — contabilizar de quem é a carta (2–4 jogadores) e, talvez,
   espacializar por jogador.
-- **Espaço físico** — octofonia (hoje é estéreo; o `b_synth.scd` já marca o TODO
-  pra 8 canais), projeção (a imagem da webcam), cenografia da mesa de jogo.
+- **Espaço físico** — octofonia **implementada** (`~debug=false` → 8 canais via
+  PanAz, ver seção acima); falta **calibrar no hardware** o mapeamento
+  canal→Genelec e o nível por caixa no conservatório. Projeção (a imagem da
+  webcam) e cenografia da mesa de jogo seguem em aberto.
 
 > Renomear a pasta do projeto (`SOPA DE LETRINHAS V2` → `Canastra Suja`) é um
 > passo manual opcional — o código não depende do nome da pasta.

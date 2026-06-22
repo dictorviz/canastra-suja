@@ -1,10 +1,16 @@
 """
-A_CAMA - CANASTRA SUJA: a cama AO VIVO (estado rolante)
+A_CAMA - CANASTRA SUJA: a cama (estado rolante) -- DORMENTE na peca ao vivo
 
 ====================================================================
 LEIA ISTO PRIMEIRO (pra quem nunca viu codigo)
 ====================================================================
 *** Nunca programou? Abra antes o PYTHON_DO_ZERO.md.
+
+*** ATENCAO (dormente): este vibrafone foi TIRADO da peca ao vivo. A b_partida
+*** NAO chama mais CamaViva.tocar_carta() -- veja o comentario "Vibrafone
+*** REMOVIDO" la no b_partida.jogar(). O codigo aqui continua intacto e FUNCIONA
+*** no demo (python a_cama.py), mas NAO soa durante o jogo. Fica como registro da
+*** poetica original e por usar a mesma matematica da camada A (nucleo_compositor).
 *** Este arquivo e mais avancado: ele usa a "matematica das cartas" que mora
 *** no nucleo_compositor.py. Voce NAO precisa entender a matematica pra ler
 *** aqui -- pensa nela como uma caixa-preta que, dada uma carta, devolve um

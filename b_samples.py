@@ -39,13 +39,14 @@ from typing import Dict, List, Optional  # "rotulos" que dizem o tipo das coisas
 # Eles nao mudam o que o programa faz; so ajudam quem le (e o editor) a entender.
 
 from pythonosc import udp_client  # a ferramenta que manda as mensagens OSC
+import b_config  # o painel de ajustes unico (DEBUG, rede OSC)
 
 # =============================================================================
 # CONFIG = numeros de ajuste (ver os comentarios; mude aqui se quiser calibrar)
 # =============================================================================
 
-DEFAULT_HOST = "127.0.0.1"  # "este mesmo computador"
-DEFAULT_PORT = 57120  # mesma porta do SC; namespace /mundo/* separado
+DEFAULT_HOST = b_config.HOST  # "este mesmo computador" (vem do painel unico)
+DEFAULT_PORT = b_config.PORT  # mesma porta do SC; namespace /mundo/* separado
 
 HERE = os.path.dirname(os.path.abspath(__file__))  # a pasta deste arquivo
 SAMPLES_DIR = os.path.join(HERE, "samples")        # a subpasta "samples"
@@ -120,7 +121,7 @@ class MundoPlayer:
     """Carrega os habitats no SC e atravessa entre eles a cada carta."""
 
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
-                 verbose: bool = True, seed: Optional[int] = None):
+                 verbose: bool = b_config.DEBUG, seed: Optional[int] = None):
         self.host = host
         self.port = port
         self.verbose = verbose
