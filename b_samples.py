@@ -126,6 +126,10 @@ class MundoPlayer:
         self.port = port
         self.verbose = verbose
         self.client = udp_client.SimpleUDPClient(host, port)  # o "carteiro" OSC
+        # pythonosc cria o socket em modo nao-bloqueante; em rajadas de envio
+        # (ex: 30x /mundo/load no preload) sem ninguem ouvindo, o buffer UDP satura
+        # e levanta OSError errno 35 (EAGAIN). Modo bloqueante espera o buffer vazar.
+        self.client._sock.setblocking(True)
         # Os dois dicionarios abaixo comecam VAZIOS e vao sendo preenchidos no
         # preload(): um guarda "nome do habitat -> caminho do arquivo", o outro
         # "nome do habitat -> quantos segundos ele dura".

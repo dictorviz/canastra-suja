@@ -375,8 +375,13 @@ def _try_open(index: int, backend):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     ok, frame = False, None
-    for _ in range(8):  # da uns quadros de "esquenta" pra camera acordar
-        ok, frame = cap.read()
+    for _ in range(20):  # da uns quadros de "esquenta" pra camera acordar
+        try:
+            ok, frame = cap.read()
+        except OSError:
+            # errno 35 (EAGAIN) no macOS: camera ainda nao pronta; tenta de novo
+            import time as _t; _t.sleep(0.05)
+            continue
         if ok and frame is not None:
             return cap
     cap.release()  # abriu mas nao entregou imagem -> trata como falha
@@ -392,9 +397,12 @@ def _open_camera(index: int):
     ou sensor), e um backend so as vezes nao abre o dispositivo certo. Tentar
     DSHOW -> MSMF -> ANY e varrer indices acha a HP sozinho."""
     # ordem de backends: no Windows DSHOW costuma abrir mais rapido; MSMF e o
-    # nativo moderno; ANY deixa o OpenCV escolher. Fora do Windows, so o padrao.
+    # nativo moderno; ANY deixa o OpenCV escolher. No macOS o backend padrao lanca
+    # EAGAIN (errno 35) antes da camera acordar; CAP_AVFOUNDATION inicializa sem isso.
     if sys.platform.startswith("win"):
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+    elif sys.platform == "darwin":
+        backends = [cv2.CAP_AVFOUNDATION, None]
     else:
         backends = [None]
 

@@ -21,9 +21,13 @@ tts_cache/
 # sessoes/        = estados/gravacoes de sessoes antigas
 sessoes/
 # marcadores/     = PNGs dos marcadores ArUco (gere com: python b_aruco.py gerar)
-marcadores/
+#marcadores/
 # marcadores_a4_*.pdf = folhas A4 prontas pra grafica (gere com: python b_imprimir.py)
-marcadores_a4_*.pdf
+#marcadores_a4_*.pdf
+
+## pasta com mesmo projeto no google drive
+zip_google_drive/
+
 # composicao*.txt = partituras-texto exportadas (nucleo_compositor)
 composicao*.txt
 __pycache__/
