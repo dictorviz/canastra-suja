@@ -43,10 +43,10 @@ TOTAL_CARTAS = N_BARALHOS * 52 + N_BARALHOS * CORINGAS_POR_BARALHO  # 108
 MIN_JOGADORES = 2   # menos que isso nao da pra jogar
 MAX_JOGADORES = 4   # mais que isso a gente nao trata aqui
 
-# Valor em pontos de cada carta (tabela do Buraco Aberto / Canastra):
-#   Curinga (Joker) = 50 ; 2 usado como curinga = 10 ; As = 15 ;
+# Valor em pontos de cada carta (tabela canonica da peca -- ver REGRAS_BURACO.md):
+#   Curinga (Joker) = 20 ; 2 usado como curinga = 10 ; As = 15 ;
 #   do 8 ao K = 10 ; do 3 ao 7 = 5.
-# (Ha tabelas alternativas por ai com Joker=20; adotamos a detalhada.)
+# (Ha tabelas alternativas por ai com Joker=50; a nossa canonica usa 20.)
 #
 # Isto e um DICIONARIO (tabela de-para). A chave (esquerda do ":") e o nome da
 # carta como TEXTO; o valor (direita) e quantos pontos ela vale. Pra consultar:
@@ -56,7 +56,7 @@ PONTOS = {
     "K": 10, "Q": 10, "J": 10, "10": 10, "9": 10, "8": 10,
     "7": 5, "6": 5, "5": 5, "4": 5, "3": 5,
     "2": 10,          # o "2" e curinga (curinguinha)
-    "JOKER": 50,      # o curingao
+    "JOKER": 20,      # o curingao
 }
 
 # Cartas especiais (curingas). Guardamos o nome delas em caixas com nome bonito
@@ -72,8 +72,8 @@ CURINGA_MENOR = "2"       # curinguinha (qualquer naipe)
 CANASTRAS = {
     "limpa":      ("sem curinga, 7+ cartas em sequencia do mesmo naipe", 200),
     "suja":       ("com curinga ou curinguinha",                         100),
-    "quinhentos": ("As a 2, sem curinga",                                500),
-    "real":       ("As a As, sem curinga",                              1000),
+    "quinhentos": ("As a Rei (13 cartas), sem curinga",                  500),
+    "real":       ("As a As (comeca e termina com As), sem curinga",    1000),
 }
 
 
@@ -199,7 +199,7 @@ class Mesa:
 def _demo():
     print("B_BURACO - demo das regras (estrutura de turnos)")
     print(f"Baralho: {TOTAL_CARTAS} cartas ({N_BARALHOS} baralhos + coringas).")
-    print(f"Curingas: {CURINGA_MAIOR} (50pts) e o {CURINGA_MENOR} (curinguinha, 10pts).")
+    print(f"Curingas: {CURINGA_MAIOR} (20pts) e o {CURINGA_MENOR} (curinguinha, 10pts).")
     for n in (2, 4):           # faz a demo pra uma mesa de 2 e outra de 4 jogadores
         print()
         mesa = Mesa(n)         # FABRICA uma mesa com n jogadores (roda o __init__)

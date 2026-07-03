@@ -113,8 +113,8 @@ Chaves `{ }` guardam pares **"de → para"**. Você dá uma **chave** e recebe u
 (chave) e acha o significado (valor).
 
 ```python
-pontos = {"A": 15, "K": 10, "JOKER": 50}
-pontos["JOKER"]   # vale 50  (procurei "JOKER", recebi 50)
+pontos = {"A": 15, "K": 10, "JOKER": 20}
+pontos["JOKER"]   # vale 20  (procurei "JOKER", recebi 20)
 ```
 
 No projeto isso aparece o tempo todo: *naipe → tipo de defeito*, *carta →

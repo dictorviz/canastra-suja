@@ -248,6 +248,9 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
   classe **`Mesa`**: jogadores, duplas (no jogo de 4: J1+J3 × J2+J4) e **de
   quem é a vez** (`proximo()` gira em sentido horário). Só a estrutura de turnos
   da performance — pontuação real acontece na mesa física.
+  > As **regras completas** (a versão canônica da peça, o que o código usa × o que
+  > é só contexto, e como naipe/valor viram som) estão em
+  > [`REGRAS_BURACO.md`](REGRAS_BURACO.md).
 
 - **`b_samples.py`** — o **baralho do mundo** (os habitats):
   - `WorldDeck` — embaralha as chaves dos 43 habitats; `draw()` devolve o
