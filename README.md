@@ -327,10 +327,13 @@ A mesma lógica de "naipe = operação", agora aplicada ao habitat gravado:
     na `Partida`. **A janela da webcam é a projeção** (marcadores desenhados +
     HUD opcional). Teclas: `q`/ESC=sair, `f`=tela cheia, `h`=HUD, `m`=espelhar,
     `g`=liga/desliga o apodrecer da imagem, `r`=nova mão.
-  - **Gesto de finalizar (cobrir a câmera):** se a peça já começou e **nenhum**
-    marcador aparece por `END_COVER_S` (~3 s) seguidos, a obra **encerra** — solta
+  - **Gesto de finalizar (tapar a lente):** se a peça já começou e a lente fica
+    **coberta** — quadro **genuinamente escuro** (`_brilho_medio < END_DARK_LEVEL`)
+    **E** sem carta — por `END_COVER_S` (~6 s) seguidos, a obra **encerra** — solta
     as vozes do theremin, para os habitats (fade) e a projeção escurece em
-    `END_FADE_S`. `r` cancela/recomeça. Ver *Como acabar a peça*.
+    `END_FADE_S`. Mesa vazia com luz acesa ou um quadro preto solto **não** encerram
+    (era o bug antigo: bastava ficar sem carta). `r` cancela/recomeça. Ver *Como
+    acabar a peça*.
   - **Fluxo contínuo (theremin):** além do disparo discreto, a cada quadro calcula
     a **pose** de cada marcador visível (`_pose_features`: **x/y/size/spin/tilt/luma**
     a partir dos 4 cantos, sem calibrar a câmera) e a manda ao SC pela
@@ -374,13 +377,17 @@ A captação do ArUco faz **duas coisas ao mesmo tempo**:
 
 ### Como acabar a peça (cobrir a câmera)
 
-A peça **termina por gesto**: se ela já começou (já caiu ao menos uma carta) e
-**nenhum marcador** aparece por `END_COVER_S` (~3 s) seguidos, a obra **encerra** —
-as vozes do theremin soltam, os habitats param (fade) e a **projeção escurece** em
-`END_FADE_S` (~4 s), até o laço sair. Cobrir a lente = **apagar a luz da peça**.
-A tecla `r` cancela um encerramento em curso (recomeça a mão); `q`/ESC sai na
-hora. Os tempos moram no topo do `b_aruco.py` (suba `END_COVER_S` se a câmera
-chega a cegar no meio sem querer).
+A peça **termina por gesto**: se ela já começou (já caiu ao menos uma carta) e a
+**lente fica coberta** — quadro **genuinamente escuro** (brilho médio abaixo de
+`END_DARK_LEVEL`) **E** sem nenhuma carta — por `END_COVER_S` (~6 s) seguidos, a
+obra **encerra** — as vozes do theremin soltam, os habitats param (fade) e a
+**projeção escurece** em `END_FADE_S` (~4 s), até o laço sair. Tapar a lente =
+**apagar a luz da peça**. Exigir escuro de verdade (não só "sem carta") evita que a
+peça feche sozinha com a mesa vazia ou num piscar preto da câmera. A tecla `r`
+cancela um encerramento em curso (recomeça a mão); `q`/ESC sai na hora. Os tempos e
+o limiar de escuro moram no topo do `b_aruco.py` (suba `END_DARK_LEVEL` se a lente
+coberta ainda vaza luz; suba `END_COVER_S` se a câmera chega a cegar no meio sem
+querer).
 
 ### Modo debug (laboratório) × apresentação (octofonia)
 
@@ -466,11 +473,19 @@ arquivo/
 
 ### Pré-requisitos
 - **SuperCollider** (o som sai por ele).
-- **Python 3** com `python-osc`:
+- **Python 3** com as dependências do núcleo. **Instale tudo de uma vez** com o
+  `requirements.txt` (versões travadas — as mesmas em Windows e Mac, pra não dar
+  a "loteria" de versão que quebrava o Mac):
   ```
-  pip install python-osc
+  python -m pip install -r requirements.txt
   ```
-- Pro modo **webcam (ArUco)**: `pip install opencv-contrib-python` + uma webcam.
+  Isso instala `opencv-contrib-python`, `numpy` e `python-osc`. Pro modo **webcam
+  (ArUco)** você ainda precisa de **uma webcam**.
+  > ⚠️ É `opencv-CONTRIB` (traz o módulo `aruco`). **Não** instale `opencv-python`
+  > junto — as duas brigam. Se já tiver a outra:
+  > `python -m pip uninstall -y opencv-python opencv-python-headless`
+  > **macOS:** na 1ª vez, libere a câmera em *Ajustes → Privacidade e Segurança →
+  > Câmera* pro app que roda o Python (Terminal/iTerm/IDE), senão a câmera não abre.
 
 ### Passo a passo
 1. Abra o **SuperCollider** e rode, **nesta ordem** (selecione tudo, `Ctrl+Enter`,
@@ -491,9 +506,9 @@ arquivo/
      carta aleatória, `.` pra silêncio, `r` pra nova mão, `q` pra sair.
    - **[2] Webcam (ArUco)** — vire as cartas com marcador na frente da câmera;
      **a janela da webcam é a projeção**. Cada carta nova atravessa o habitat +
-     soma degradação + (na webcam) vira theremin, e passa a vez. **Cobrir a
-     câmera por ~3 s encerra a peça** (fade). Teclas: `q`/ESC=sair, `f`=tela
-     cheia, `h`=HUD, `m`=espelhar, `g`=degradar, `r`=nova mão.
+     soma degradação + (na webcam) vira theremin, e passa a vez. **Tapar a lente
+     (escuro, sem carta) por ~6 s encerra a peça** (fade). Teclas: `q`/ESC=sair,
+     `f`=tela cheia, `h`=HUD, `m`=espelhar, `g`=degradar, `r`=nova mão.
 
 **Marcadores ArUco** (pra colar nas cartas): `python b_aruco.py gerar` salva
 108 PNGs em `marcadores/` — **2 baralhos** de 54 (52 cartas + 2 coringas cada).
