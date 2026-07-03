@@ -1,0 +1,18 @@
+# Dependencias do NUCLEO da obra (main.py -> b_aruco / b_samples / b_partida).
+# Versoes TRAVADAS nas que estao rodando (Windows + Mac): instalar exatamente
+# estas evita a "loteria" de versao que quebrava o Mac. Ha wheels prontas pra
+# Windows e macOS (Intel e Apple Silicon) das tres.
+#
+#   Instalar:  python -m pip install -r requirements.txt
+#
+# IMPORTANTE: e opencv-CONTRIB (traz o modulo aruco dos marcadores). NAO instale
+# 'opencv-python' junto -- as duas brigam. Se ja tiver a outra:
+#   python -m pip uninstall -y opencv-python opencv-python-headless
+
+opencv-contrib-python==4.13.0
+numpy==2.0.1
+python-osc==1.10.2
+
+# --- Opcionais (so os experimentos antigos em arquivo/, NAO a obra atual) ---
+# pygame==2.6.1        # visual_pygame / legado_midi
+# music21==9.1.0       # geracao de partitura legada
