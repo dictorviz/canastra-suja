@@ -3,9 +3,10 @@
 > *Um baralho de Buraco que, carta a carta, vai sujando o som do mundo.*
 
 Performance eletroacústica ao vivo construída sobre o jogo de **Buraco**
-(2–4 jogadores). Não há palavras nem voz, e **nada toca sozinho: os jogadores
-tocam a peça.** Cada carta da vida real, captada por **webcam + ArUco**, faz o
-**MUNDO** (`b_*`) reagir de **três jeitos ao mesmo tempo**:
+(2–4 jogadores — regras em [`REGRAS_BURACO.md`](REGRAS_BURACO.md)). Não há
+palavras nem voz, e **nada toca sozinho: os jogadores tocam a peça.** Cada carta
+da vida real, captada por **webcam + ArUco**, faz o **MUNDO** (`b_*`) reagir de
+**três jeitos ao mesmo tempo**:
 
 - **atravessa um habitat** — uma biblioteca de paisagens sonoras gravadas
   (mp3/wav) faz crossfade pro próximo habitat sorteado;
