@@ -136,7 +136,7 @@ def opt_aruco():
     print("  A janela da webcam E A PROJECAO (marcadores detectados + HUD).")
     print("  Vire as cartas com marcador ArUco na frente da camera; cada carta")
     print("  nova atravessa o habitat + degradacao + vira theremin e passa a vez.")
-    print("  COBRIR a camera por ~3s ENCERRA a peca (fade-out de tudo).")
+    print("  TAPAR a lente (escuro, sem carta) por ~6s ENCERRA a peca (fade-out de tudo).")
     print("  Marcadores pra imprimir:  python b_aruco.py gerar")
     print("  Teclas na janela: q=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao")
     print()

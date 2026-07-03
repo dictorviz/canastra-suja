@@ -43,8 +43,8 @@ USO:
 
 TECLAS na janela: q/ESC=sair  f=tela cheia  h=HUD operador  m=espelhar
                   g=liga/desliga o apodrecer da imagem  r=nova mao
-GESTO DE FIM: cobrir a camera por ~3s (sem marcador nenhum) ENCERRA a peca --
-              solta as vozes, para os habitats (fade) e a projecao escurece.
+GESTO DE FIM: TAPAR a lente (quadro escuro E sem marcador) por ~6s ENCERRA a peca
+              -- solta as vozes, para os habitats (fade) e a projecao escurece.
 
 Requer: pip install opencv-contrib-python  +  uma webcam.
 """
@@ -449,12 +449,30 @@ CARD_COOLDOWN_S = b_config.CARD_COOLDOWN_S
 GONE_FRAMES_VOICE = 8
 
 # Gesto de FINALIZAR (pedido 4): COBRIR A CAMERA. Se a peca ja comecou (ja caiu
-# ao menos uma carta) e NENHUM marcador valido aparece por END_COVER_S segundos
-# SEGUIDOS, a obra ENCERRA: solta as vozes do theremin, para os habitats (fade) e
-# a projecao escurece em END_FADE_S. Cobrir a lente = apagar a luz da peca.
-# (Sobe END_COVER_S se a camera cega sem querer no meio; abaixa pra encerrar antes.)
-END_COVER_S = 3.0
+# ao menos uma carta) e a lente fica COBERTA por END_COVER_S segundos SEGUIDOS, a
+# obra ENCERRA: solta as vozes do theremin, para os habitats (fade) e a projecao
+# escurece em END_FADE_S. Cobrir a lente = apagar a luz da peca.
+#
+# "Coberta" = quadro GENUINAMENTE ESCURO (brilho medio < END_DARK_LEVEL, 0..255) E
+# sem nenhuma carta valida. So "sem carta" NAO basta: mesa vazia com a luz acesa,
+# ou a camera piscando um quadro preto, NAO encerram a peca (esse era o bug: bastava
+# ficar 3s sem carta pra fechar tudo sozinho). Exigir escuro de verdade + tempo maior
+# faz o gesto ser deliberado (a mao na lente), nao um acidente de iluminacao.
+# (Sobe END_DARK_LEVEL se a lente coberta ainda vaza luz; sobe END_COVER_S se cega
+# sem querer no meio; abaixa pra encerrar antes.)
+END_COVER_S = 6.0     # segundos de lente coberta (escuro+sem carta) pra encerrar
+END_DARK_LEVEL = 20.0  # brilho medio (0..255) abaixo do qual o quadro conta como "escuro"
 END_FADE_S = 4.0
+
+
+def _brilho_medio(frame) -> float:
+    """Brilho medio do quadro em 0..255 (0=preto). Cobrir a lente com a mao deixa
+    quase tudo perto de 0; mesa iluminada fica bem acima. Se nao der pra medir
+    (sem numpy), devolve 255 -> nunca conta como escuro (falha pro lado seguro:
+    nao encerra sozinho)."""
+    if frame is None or np is None:
+        return 255.0
+    return float(frame.mean())
 
 
 def run(num_jogadores: int, seed=None, camera_index: int = 0,
@@ -519,7 +537,7 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
     voice_gone = {}  # id -> quadros consecutivos fora dos escolhidos (histerese da voz)
     # gesto de FINALIZAR (cobrir a camera): estado pra detectar a lente coberta.
     started = False           # a peca ja comecou? (so deixa encerrar depois da 1a carta)
-    last_seen = time.time()   # ultimo instante com ALGUMA carta visivel
+    last_seen = time.time()   # ultimo instante em que a lente NAO estava coberta
     ending_at = None          # instante em que o fim disparou (None = ainda tocando)
 
     # mostra a resolucao que a webcam REALMENTE entregou (pode nao ser 720p).
@@ -530,7 +548,7 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
         print("     (abaixo de 720p -> marcadores precisam estar MAIS PERTO; "
               "use marcadores maiores se possivel.)")
     print("     teclas na janela: q/ESC=sair  f=tela cheia  h=HUD  m=espelhar  g=degradar  r=nova mao")
-    print(f"     [fim] cobrir a camera por ~{int(END_COVER_S)}s encerra a peca (fade-out de tudo).\n")
+    print(f"     [fim] TAPAR a lente (escuro, sem carta) por ~{int(END_COVER_S)}s encerra a peca (fade-out de tudo).\n")
 
     # "try/finally": faca o laco; aconteca o que acontecer (saida normal ou erro),
     # no FIM solte a camera e feche as janelas direitinho (o bloco 'finally').
@@ -549,20 +567,23 @@ def run(num_jogadores: int, seed=None, camera_index: int = 0,
                 aruco.drawDetectedMarkers(frame, corners, ids)  # desenha as bordas na imagem
 
             # ---- GESTO DE FINALIZAR (pedido 4): COBRIR A CAMERA ----
-            # se a peca ja comecou e NENHUMA carta valida aparece por END_COVER_S
-            # segundos seguidos, encerra: solta as vozes, para os habitats (fade) e
-            # escurece a projecao (mais abaixo). Cobrir a lente = apagar a luz.
+            # so encerra se a LENTE ESTIVER COBERTA: quadro genuinamente escuro
+            # (brilho < END_DARK_LEVEL) E sem carta valida, sustentado por END_COVER_S
+            # segundos. Mesa vazia com luz, ou um quadro preto solto da camera, NAO
+            # contam (reiniciam a contagem). Cobrir a lente = apagar a luz da peca.
             tnow = time.time()
             cards_visible = any(id_to_card(m) is not None for m in present)
-            if cards_visible:
-                last_seen = tnow          # tem carta na tela -> reinicia a contagem
+            frame_escuro = _brilho_medio(frame) < END_DARK_LEVEL
+            coberta = frame_escuro and (not cards_visible)  # lente tapada = escuro + sem carta
+            if not coberta:
+                last_seen = tnow          # cena viva (tem carta OU tem luz) -> reinicia
             if fired_at:
                 started = True            # ja caiu ao menos uma carta -> a peca comecou
-            if (ending_at is None) and started and (not cards_visible) \
+            if (ending_at is None) and started and coberta \
                     and (tnow - last_seen >= END_COVER_S):
                 ending_at = tnow
                 partida.encerrar()        # solta vozes do theremin + para habitats (fade)
-                print(f"[FIM] camera coberta {END_COVER_S:.0f}s -> encerrando a peca "
+                print(f"[FIM] lente coberta {END_COVER_S:.0f}s -> encerrando a peca "
                       f"(fade {END_FADE_S:.0f}s). 'r' recomeca; q/ESC sai.")
 
             # marcadores NOVOS e estaveis deste quadro (varios juntos = rajada)
